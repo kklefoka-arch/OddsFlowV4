@@ -9,30 +9,34 @@
    CSS CUSTOM PROPERTIES
    ================================================================ */
 :root {
-    --bg-base:        #0A0B0D;
-    --bg-nav:         #0D0F11;
-    --bg-card:        #141618;
-    --bg-row-alt:     #111315;
-    --border:         #1E2124;
-    --border-strong:  #2A2D32;
+    --bg-base:        #080C10;
+    --bg-nav:         #0A0F18;
+    --bg-card:        #0D1520;
+    --bg-row-alt:     #0A1018;
+    --border:         #182030;
+    --border-strong:  #223040;
 
-    --text-primary:   #E2E8F0;
-    --text-secondary: #94A3B8;
-    --text-dim:       #4B5563;
-    --text-muted:     #374151;
+    --text-primary:   #DCE8F5;
+    --text-secondary: #6A8CAA;
+    --text-dim:       #2E4560;
+    --text-muted:     #1E3050;
 
-    --amber:          #F59E0B;
-    --amber-dim:      #B45309;
-    --green:          #22C55E;
-    --green-bg:       #14532D;
+    --amber:          #F5A623;
+    --amber-dim:      #A87018;
+    --green:          #00D68F;
+    --green-bg:       #002518;
     --red:            #EF4444;
-    --steel:          #64748B;
-    --blue:           #3B82F6;
-    --blue-dim:       #1E3A5F;
+    --steel:          #4A6888;
+    --cyan:           #00C8FF;
+    --cyan-dim:       #004870;
+    --blue:           #4090F0;
+    --blue-dim:       #183870;
 
-    --font-mono:      'IBM Plex Mono', monospace;
-    --font-heading:   'Syne', sans-serif;
+    --font-mono:      'JetBrains Mono', monospace;
+    --font-heading:   'Inter', sans-serif;
 
+    --radius:         8px;
+    --radius-sm:      4px;
     --radius-none:    0;
     --spacing-page:   2rem;
 }
@@ -258,6 +262,7 @@ a {
 .card {
     background: var(--bg-card);
     border: 1px solid var(--border);
+    border-radius: var(--radius);
     padding: 0;
     overflow: hidden;
 }
@@ -423,12 +428,13 @@ a {
 .badge-fire {
     display: inline-block;
     background: var(--amber);
-    color: #0A0B0D;
+    color: #080C10;
     font-family: var(--font-heading);
     font-weight: 700;
     font-size: 0.65rem;
     letter-spacing: 0.06em;
     padding: 2px 8px;
+    border-radius: var(--radius-sm);
     text-transform: uppercase;
 }
 
@@ -441,6 +447,7 @@ a {
     font-size: 0.65rem;
     letter-spacing: 0.06em;
     padding: 2px 8px;
+    border-radius: var(--radius-sm);
     text-transform: uppercase;
 }
 
@@ -452,17 +459,19 @@ a {
     font-size: 0.65rem;
     letter-spacing: 0.06em;
     padding: 2px 8px;
+    border-radius: var(--radius-sm);
     text-transform: uppercase;
 }
 
 .badge-meas {
     display: inline-block;
-    border: 1px solid var(--blue);
-    color: var(--blue);
+    border: 1px solid var(--cyan-dim);
+    color: var(--cyan);
     font-family: var(--font-heading);
     font-size: 0.65rem;
     letter-spacing: 0.06em;
     padding: 2px 8px;
+    border-radius: var(--radius-sm);
     text-transform: uppercase;
 }
 
@@ -473,6 +482,7 @@ a {
     font-size: 0.65rem;
     letter-spacing: 0.04em;
     padding: 2px 4px;
+    border-radius: var(--radius-sm);
 }
 
 /* ================================================================
@@ -731,3 +741,197 @@ a {
 
 /* === Inspector footnote === */
 .insp-footnote { font-size: 0.7rem; color: var(--text-dim); margin-top: 1.2rem; padding: 0.6rem 0; border-top: 1px solid var(--border); letter-spacing: 0.02em; line-height: 1.6; }
+
+/* === Fixture card grid (ingest queue) === */
+.fx-card-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+    gap: 0.75rem;
+    padding: 1rem;
+}
+
+.fx-card {
+    background: var(--bg-base);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 0.85rem 0.9rem;
+    cursor: pointer;
+    transition: border-color 0.15s, background 0.15s;
+    display: flex;
+    flex-direction: column;
+    gap: 0.45rem;
+    position: relative;
+}
+
+.fx-card:hover { border-color: var(--cyan-dim); background: #0A1420; }
+.fx-card.fx-card-active { border-color: var(--cyan); background: #091420; }
+
+.fx-card-date {
+    font-size: 0.68rem;
+    color: var(--text-secondary);
+    letter-spacing: 0.04em;
+}
+
+.fx-card-time {
+    color: var(--cyan);
+    margin-left: 0.3rem;
+}
+
+.fx-card-match {
+    display: flex;
+    flex-direction: column;
+    gap: 0.15rem;
+}
+
+.fx-team {
+    font-family: var(--font-heading);
+    font-size: 0.8rem;
+    font-weight: 600;
+    color: var(--text-primary);
+    line-height: 1.2;
+}
+
+.fx-vs {
+    font-size: 0.65rem;
+    color: var(--text-dim);
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    font-family: var(--font-heading);
+    padding: 1px 0;
+}
+
+.fx-card-meta {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.35rem;
+    align-items: center;
+    margin-top: 0.1rem;
+}
+
+.fx-card-foot {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-top: 0.2rem;
+    padding-top: 0.4rem;
+    border-top: 1px solid var(--border);
+}
+
+.zone-badge, .bts-badge {
+    border-radius: var(--radius-sm);
+}
+
+/* === Cell signal panel (pre-match inspection) === */
+.cell-signal-panel {
+    background: var(--bg-nav);
+    border: 1px solid var(--cyan-dim);
+    border-radius: var(--radius);
+    padding: 1rem 1.1rem;
+    margin: 0 1rem 1rem;
+    animation: fadeIn 0.2s ease-out both;
+}
+
+.csp-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 0.75rem;
+}
+
+.csp-title {
+    font-family: var(--font-heading);
+    font-size: 0.75rem;
+    font-weight: 700;
+    letter-spacing: 0.1em;
+    color: var(--cyan);
+    text-transform: uppercase;
+}
+
+.csp-close {
+    background: transparent;
+    border: none;
+    color: var(--steel);
+    cursor: pointer;
+    font-size: 0.85rem;
+    padding: 2px 5px;
+    border-radius: var(--radius-sm);
+}
+
+.csp-close:hover { color: var(--text-primary); }
+
+.csp-metrics {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 0.6rem;
+    margin-bottom: 0.75rem;
+}
+
+.csp-metric {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    padding: 0.5rem 0.6rem;
+    text-align: center;
+}
+
+.csp-metric-label {
+    font-family: var(--font-heading);
+    font-size: 0.58rem;
+    letter-spacing: 0.14em;
+    color: var(--steel);
+    text-transform: uppercase;
+    display: block;
+    margin-bottom: 0.2rem;
+}
+
+.csp-metric-value {
+    font-family: var(--font-mono);
+    font-size: 1rem;
+    font-weight: 600;
+    color: var(--text-primary);
+}
+
+.csp-metric-value.hit-high { color: var(--amber); }
+.csp-metric-value.hit-mid  { color: var(--green); }
+.csp-metric-value.hit-cyan { color: var(--cyan); }
+
+.csp-footer {
+    font-size: 0.72rem;
+    color: var(--text-secondary);
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    flex-wrap: wrap;
+}
+
+.csp-n { color: var(--steel); font-size: 0.68rem; }
+
+/* === Inspector chart section === */
+.insp-chart-section {
+    padding: 1rem;
+    border-top: 1px solid var(--border);
+}
+
+.insp-chart-title {
+    font-family: var(--font-heading);
+    font-size: 0.65rem;
+    font-weight: 700;
+    letter-spacing: 0.18em;
+    color: var(--steel);
+    text-transform: uppercase;
+    margin-bottom: 0.75rem;
+}
+
+.insp-chart-wrap {
+    position: relative;
+    height: 160px;
+}
+
+/* === Modal rounded === */
+.modal { border-radius: var(--radius); }
+.modal-header { border-radius: var(--radius) var(--radius) 0 0; }
+
+/* === Form inputs rounded === */
+.form-input { border-radius: var(--radius-sm); }
+.btn-primary { border-radius: var(--radius-sm); }
+.btn-settle  { border-radius: var(--radius-sm); }

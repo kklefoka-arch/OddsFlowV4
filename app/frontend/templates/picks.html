@@ -1,0 +1,103 @@
+{% extends "base.html" %}
+{% block title %}Picks — OddsFlow V3{% endblock %}
+{% block nav_picks %}nav-link-active{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <div class="page-header-left">
+    <h1 class="page-title">PICKS</h1>
+    <p class="page-subtitle">Upcoming fixtures in live promoted cells · Pre-match signals only</p>
+  </div>
+  <div class="summary-stats">
+    <div class="stat-block">
+      <span class="stat-label">LIVE PICKS</span>
+      <span class="stat-value amber">{{ picks | length }}</span>
+    </div>
+  </div>
+</div>
+
+{% if picks %}
+<div class="picks-grid">
+  {% for p in picks %}
+  <div class="pick-card">
+
+    <div class="pick-card-top">
+      <div class="pick-meta">
+        <span class="pick-date">{{ p.date[:10] }}</span>
+        {% if p.date|length > 10 %}<span class="pick-time">{{ p.date[11:16] }}</span>{% endif %}
+        <span class="tier-badge tier-t{{ p.tier }}">T{{ p.tier }}</span>
+      </div>
+      <span class="badge-fire">&#9650; LIVE</span>
+    </div>
+
+    <div class="pick-match">
+      <span class="pick-team">{{ p.home_team_name }}</span>
+      <span class="pick-vs">vs</span>
+      <span class="pick-team">{{ p.away_team_name }}</span>
+    </div>
+
+    <div class="pick-league">{{ p.league_name }}</div>
+
+    <div class="pick-classification">
+      <span class="zone-badge">{{ p.draw_zone | replace("_"," ") }}</span>
+      <span class="bts-badge">{{ p.bts_pocket | replace("_"," ") }}</span>
+      <span class="pick-draw-odd">D {{ "%.2f"|format(p.draw_odd) if p.draw_odd else "—" }}</span>
+    </div>
+
+    <!-- Cell signal panel -->
+    <div class="pick-signal">
+      <div class="pick-signal-metrics">
+        <div class="psm">
+          <span class="psm-label">Goals</span>
+          <span class="psm-val {% if p.cell.gn_hit >= 72 %}hit-high{% elif p.cell.gn_hit >= 67 %}hit-mid{% endif %}">
+            {{ "%.1f"|format(p.cell.gn_hit) }}%
+          </span>
+        </div>
+        <div class="psm">
+          <span class="psm-label">Corners</span>
+          <span class="psm-val {% if p.cell.cn_hit >= 72 %}hit-high{% elif p.cell.cn_hit >= 67 %}hit-mid{% endif %}">
+            {{ "%.1f"|format(p.cell.cn_hit) }}%
+          </span>
+        </div>
+        <div class="psm">
+          <span class="psm-label">3-Way</span>
+          <span class="psm-val {% if p.cell.threeway_hit >= 72 %}hit-high{% elif p.cell.threeway_hit >= 67 %}hit-mid{% endif %}">
+            {{ "%.1f"|format(p.cell.threeway_hit) }}%
+          </span>
+        </div>
+        <div class="psm">
+          <span class="psm-label">n</span>
+          <span class="psm-val dim">{{ p.cell.n_fixtures }}</span>
+        </div>
+      </div>
+      {% if p.cell.threeway_pick %}
+      <div class="pick-signal-rec">
+        <span class="pick-rec-label">REC</span>
+        <span class="pick-rec-val">{{ p.cell.threeway_pick }}</span>
+      </div>
+      {% endif %}
+    </div>
+
+    <div class="pick-card-foot">
+      <button class="btn-settle" data-id="{{ p.id }}">SETTLE</button>
+    </div>
+
+  </div>
+  {% endfor %}
+</div>
+
+{% else %}
+<div class="card" style="margin-top:1rem">
+  <div class="empty-state">
+    <span class="empty-icon">&#9650;</span>
+    <p>No upcoming fixtures in promoted cells yet.<br>
+       Add fixtures via the API feed, then check back when the Foundation has live cells.</p>
+  </div>
+</div>
+{% endif %}
+
+<p class="insp-footnote">
+  &#9650;&nbsp;Only fixtures that classify into a currently FIRE cell are shown.
+  Signals are pre-match only — not confirmed until the fixture is settled.
+</p>
+{% endblock %}

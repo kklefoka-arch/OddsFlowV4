@@ -5,8 +5,8 @@ from __future__ import annotations
 from collections import defaultdict
 from typing import Any
 
-from fastapi import APIRouter, Request
-from fastapi.responses import HTMLResponse
+from fastapi import APIRouter, HTTPException, Request
+from fastapi.responses import HTMLResponse, RedirectResponse
 
 from app.db.database import get_conn
 from app.engine.foundation import load_foundation
@@ -133,6 +133,11 @@ def _zone_summary(cells: list[dict[str, Any]]) -> list[dict[str, Any]]:
 # Routes
 # ---------------------------------------------------------------------------
 
+@router.get("/", include_in_schema=False)
+async def root_redirect() -> RedirectResponse:
+    return RedirectResponse(url="/inspector")
+
+
 @router.get("/inspector", response_class=HTMLResponse, tags=["inspector"])
 async def inspector_page(request: Request) -> HTMLResponse:
     conn = get_conn(settings.sqlite_path)
@@ -173,3 +178,61 @@ async def inspector_json() -> dict:
         "t1":   {"findings": _surface_findings(data["t1"],   "T1"),   "zones": _zone_summary(data["t1"])},
         "t2t3": {"findings": _surface_findings(data["t2t3"], "T2+T3"), "zones": _zone_summary(data["t2t3"])},
     }
+
+
+@router.get("/api/inspector/cell", tags=["inspector"])
+async def inspector_cell(zone: str, bts: str) -> dict:
+    """Return foundation matrix data for a single zone × BTS cell.
+
+    Used by the pre-match fixture card click — surfaces the cell's
+    historical hit rates and promotion status for a given classification.
+    """
+    conn = get_conn(settings.sqlite_path)
+    try:
+        rows = load_foundation(conn)
+    finally:
+        conn.close()
+
+    data = compute_foundation(rows)
+    match = next(
+        (c for c in data["all"] if c["zone"] == zone and c["bts_pocket"] == bts),
+        None,
+    )
+    if not match:
+        raise HTTPException(status_code=404, detail=f"Cell not found: {zone} / {bts}")
+    return match
+
+
+@router.get("/api/picks/calendar", tags=["inspector"])
+async def picks_calendar(days: int = 28) -> dict:
+    """28-day settled fixture performance calendar.
+
+    Returns daily counts of goals over 2.5 and corners over 8.5 hits
+    for all settled fixtures in the rolling window, for the inspector
+    calendar overlay.
+    """
+    conn = get_conn(settings.sqlite_path)
+    try:
+        rows = conn.execute(
+            """
+            SELECT
+                date(f.date) AS day,
+                COUNT(*)     AS total,
+                SUM(CASE WHEN (f.home_score + f.away_score) > 2.5  THEN 1 ELSE 0 END) AS goals_over,
+                SUM(CASE WHEN COALESCE(fs.total_corners, 0) > 8.5  THEN 1 ELSE 0 END) AS corners_over,
+                SUM(CASE WHEN f.home_score > f.away_score           THEN 1 ELSE 0 END) AS home_wins,
+                SUM(CASE WHEN f.home_score = f.away_score           THEN 1 ELSE 0 END) AS draws,
+                SUM(CASE WHEN f.home_score < f.away_score           THEN 1 ELSE 0 END) AS away_wins
+            FROM fixtures f
+            LEFT JOIN fixture_stats fs ON fs.fixture_id = f.id
+            WHERE f.status = 'settled'
+              AND f.home_score IS NOT NULL
+              AND f.date >= date('now', '-' || ? || ' days')
+            GROUP BY day
+            ORDER BY day ASC
+            """,
+            (days,),
+        ).fetchall()
+        return {"days": [dict(r) for r in rows], "window": days}
+    finally:
+        conn.close()

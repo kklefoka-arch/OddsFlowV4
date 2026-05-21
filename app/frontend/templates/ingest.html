@@ -125,42 +125,44 @@
       UPCOMING QUEUE
       <span class="dim" style="font-weight:400;font-size:0.7rem;margin-left:0.5rem">{{ upcoming | length }} fixtures</span>
     </div>
+    <!-- Cell signal panel — shown when a card is clicked -->
+    <div id="cell-signal-panel" class="cell-signal-panel hidden"></div>
+
     {% if upcoming %}
-    <div class="table-scroll">
-    <table class="table" id="upcoming-table">
-      <thead>
-        <tr>
-          <th>Date</th>
-          <th>Match</th>
-          <th>Zone</th>
-          <th>BTS</th>
-          <th class="num-col">D Odd</th>
-          <th>Signal</th>
-        </tr>
-      </thead>
-      <tbody id="upcoming-tbody">
-        {% for fx in upcoming %}
-        <tr>
-          <td class="date-col">{{ fx.date[:10] }}</td>
-          <td class="fixture-col">
-            <span class="team-name">{{ fx.home_team_name }}</span>
-            <span class="fixture-vs">vs</span>
-            <span class="team-name">{{ fx.away_team_name }}</span>
-          </td>
-          <td>{% if fx.draw_zone %}<span class="zone-badge">{{ fx.draw_zone | replace("_"," ") }}</span>{% else %}<span class="dim">—</span>{% endif %}</td>
-          <td>{% if fx.bts_pocket %}<span class="bts-badge">{{ fx.bts_pocket | replace("_"," ") }}</span>{% else %}<span class="dim">—</span>{% endif %}</td>
-          <td class="num-col odd-cell">{{ "%.2f"|format(fx.draw_odd) if fx.draw_odd else "—" }}</td>
-          <td>
-            {% if not fx.draw_zone %}
-              <span class="badge-hold" style="font-size:0.62rem">EXCLUDED</span>
-            {% else %}
-              <span class="badge-meas" style="font-size:0.62rem">PENDING</span>
-            {% endif %}
-          </td>
-        </tr>
-        {% endfor %}
-      </tbody>
-    </table>
+    <div class="fx-card-grid" id="upcoming-grid">
+      {% for fx in upcoming %}
+      <div class="fx-card"
+           data-zone="{{ fx.draw_zone or '' }}"
+           data-bts="{{ fx.bts_pocket or '' }}"
+           data-id="{{ fx.id }}">
+        <div class="fx-card-date">
+          {{ fx.date[:10] }}
+          {% if fx.date|length > 10 %}
+          <span class="fx-card-time">{{ fx.date[11:16] }}</span>
+          {% endif %}
+        </div>
+        <div class="fx-card-match">
+          <span class="fx-team">{{ fx.home_team_name }}</span>
+          <span class="fx-vs">vs</span>
+          <span class="fx-team">{{ fx.away_team_name }}</span>
+        </div>
+        <div class="fx-card-meta">
+          {% if fx.draw_zone %}
+            <span class="zone-badge">{{ fx.draw_zone | replace("_"," ") }}</span>
+            <span class="bts-badge">{{ fx.bts_pocket | replace("_"," ") }}</span>
+          {% endif %}
+          <span class="odd-cell" style="font-size:0.72rem">D {{ "%.2f"|format(fx.draw_odd) if fx.draw_odd else "—" }}</span>
+        </div>
+        <div class="fx-card-foot">
+          {% if not fx.draw_zone %}
+            <span class="badge-hold">EXCL</span>
+          {% else %}
+            <span class="badge-meas">PENDING</span>
+          {% endif %}
+          <button class="btn-settle" data-id="{{ fx.id }}">SETTLE</button>
+        </div>
+      </div>
+      {% endfor %}
     </div>
     {% else %}
     <div class="empty-state">

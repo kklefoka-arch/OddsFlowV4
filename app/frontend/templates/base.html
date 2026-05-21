@@ -6,7 +6,7 @@
     <title>{% block title %}OddsFlow V3{% endblock %}</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=Syne:wght@400;600;700;800&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="/static/style.css">
 </head>
 <body>
@@ -18,7 +18,7 @@
                     <a href="/foundation"  class="nav-link {% block nav_foundation %}{% endblock %}">Foundation</a>
                     <a href="/inspector"   class="nav-link {% block nav_inspector %}{% endblock %}">Inspector</a>
                     <a href="/fixtures"    class="nav-link {% block nav_fixtures %}{% endblock %}">Fixtures</a>
-                    <a href="/ingest"      class="nav-link {% block nav_ingest %}{% endblock %}">Feed</a>
+                    <a href="/picks"       class="nav-link {% block nav_picks %}{% endblock %}">Picks</a>
                 </div>
             </div>
             <div class="nav-right">
@@ -69,6 +69,7 @@
         </div>
     </div>
 
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
     <script src="/static/app.js"></script>
 </body>
 </html>

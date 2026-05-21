@@ -80,6 +80,108 @@
     });
   }
 
+  /* Fixture card click → cell signal panel */
+  var csp = qs('#cell-signal-panel');
+  var activeCard = null;
+  function promoteBadge(status) {
+    var map = {
+      'PROMOTE':           '<span class="badge-fire">&#9650; FIRE</span>',
+      'PROMOTE_TOLERANCE': '<span class="badge-tol">&#9650; TOL</span>',
+      'HOLD':              '<span class="badge-hold">HOLD</span>',
+      'MEASURING':         '<span class="badge-meas">MEAS</span>',
+    };
+    return map[status] || '<span class="badge-no">—</span>';
+  }
+  function hitClass(v) {
+    if (v >= 72) return 'hit-high';
+    if (v >= 67) return 'hit-cyan';
+    if (v >= 60) return 'hit-mid';
+    return '';
+  }
+  function renderCSP(cell) {
+    if (!csp) return;
+    var z = (cell.zone||'').replace(/_/g,' ').toUpperCase();
+    var b = (cell.bts_pocket||'').replace(/_/g,' ').toUpperCase();
+    var g = cell.gn_hit != null ? cell.gn_hit.toFixed(1) : '—';
+    var c = cell.cn_hit != null ? cell.cn_hit.toFixed(1) : '—';
+    var t = cell.threeway_hit != null ? cell.threeway_hit.toFixed(1) : '—';
+    csp.innerHTML =
+      '<div class="csp-header">' +
+        '<span class="csp-title">' + z + ' &nbsp;/&nbsp; ' + b + '</span>' +
+        '<button class="csp-close" id="csp-close-btn">&#10005;</button>' +
+      '</div>' +
+      '<div class="csp-metrics">' +
+        '<div class="csp-metric"><span class="csp-metric-label">Goals hit%</span>' +
+          '<span class="csp-metric-value ' + hitClass(cell.gn_hit) + '">' + g + '%</span></div>' +
+        '<div class="csp-metric"><span class="csp-metric-label">Corners hit%</span>' +
+          '<span class="csp-metric-value ' + hitClass(cell.cn_hit) + '">' + c + '%</span></div>' +
+        '<div class="csp-metric"><span class="csp-metric-label">3-Way hit%</span>' +
+          '<span class="csp-metric-value ' + hitClass(cell.threeway_hit) + '">' + t + '%</span></div>' +
+      '</div>' +
+      '<div class="csp-footer">' +
+        promoteBadge(cell.cell_status) +
+        '<span class="csp-n">n=' + (cell.n_fixtures||0) + ' fixtures</span>' +
+        '<span class="csp-n">' + (cell.n_pct_of_zone||0).toFixed(1) + '% of zone</span>' +
+      '</div>';
+    csp.classList.remove('hidden');
+    var closeBtn = qs('#csp-close-btn');
+    if (closeBtn) closeBtn.addEventListener('click', function() {
+      csp.classList.add('hidden');
+      if (activeCard) { activeCard.classList.remove('fx-card-active'); activeCard = null; }
+    });
+  }
+  qsa('.fx-card[data-zone]').forEach(function(card) {
+    card.addEventListener('click', function(e) {
+      if (e.target.classList.contains('btn-settle')) return;
+      var zone = card.dataset.zone, bts = card.dataset.bts;
+      if (!zone || !bts) return;
+      if (activeCard) activeCard.classList.remove('fx-card-active');
+      if (activeCard === card && !csp.classList.contains('hidden')) {
+        csp.classList.add('hidden'); activeCard = null; return;
+      }
+      activeCard = card; card.classList.add('fx-card-active');
+      fetch('/api/inspector/cell?zone=' + encodeURIComponent(zone) + '&bts=' + encodeURIComponent(bts))
+        .then(function(r) { return r.json(); })
+        .then(function(data) { renderCSP(data); })
+        .catch(function() {
+          if (csp) { csp.textContent = 'No cell data for this classification yet.'; csp.classList.remove('hidden'); }
+        });
+    });
+  });
+
+  /* Inspector zone bar chart */
+  var chartCanvas = qs('#insp-zone-chart');
+  if (chartCanvas && typeof Chart !== 'undefined') {
+    fetch('/api/inspector')
+      .then(function(r) { return r.json(); })
+      .then(function(data) {
+        var zones = data.zone_summary || [];
+        var labels = zones.map(function(z) { return z.zone.replace(/_/g,' ').toUpperCase(); });
+        var goals   = zones.map(function(z) { return z.avg_goals; });
+        var corners = zones.map(function(z) { return z.avg_corners; });
+        var way3    = zones.map(function(z) { return z.avg_3way; });
+        new Chart(chartCanvas, {
+          type: 'bar',
+          data: {
+            labels: labels,
+            datasets: [
+              { label: 'Goals%',   data: goals,   backgroundColor: 'rgba(245,166,35,0.7)',  borderRadius: 3 },
+              { label: 'Corners%', data: corners, backgroundColor: 'rgba(0,214,143,0.7)',   borderRadius: 3 },
+              { label: '3-Way%',   data: way3,    backgroundColor: 'rgba(0,200,255,0.55)',  borderRadius: 3 },
+            ]
+          },
+          options: {
+            responsive: true, maintainAspectRatio: false,
+            plugins: { legend: { labels: { color: '#6A8CAA', font: { family: 'Inter', size: 11 } } } },
+            scales: {
+              x: { ticks: { color: '#6A8CAA', font: { family: 'Inter', size: 11 } }, grid: { color: '#182030' } },
+              y: { min: 40, max: 100, ticks: { color: '#6A8CAA', font: { family: 'JetBrains Mono', size: 10 } }, grid: { color: '#182030' } }
+            }
+          }
+        });
+      });
+  }
+
   /* Settle modal */
   var ov=qs('#settle-overlay'),cBtn=qs('#settle-close'),sBtn=qs('#settle-submit'),fid=qs('#settle-fixture-id');
   function openS(id){if(!ov)return;fid.value=id;['#settle-home','#settle-away','#settle-hc','#settle-ac'].forEach(function(s){var e=qs(s);if(e)e.value='';});var m=qs('#settle-msg');if(m)m.classList.add('hidden');ov.classList.remove('hidden');qs('#settle-home').focus();}
