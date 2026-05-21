@@ -2,16 +2,19 @@
 -- All tables for fixtures, stats, H2H, emit log, and results.
 
 CREATE TABLE IF NOT EXISTS leagues (
-    id      INTEGER PRIMARY KEY,
-    name    TEXT    NOT NULL,
-    country TEXT,
-    tier    INTEGER NOT NULL
+    id             INTEGER PRIMARY KEY,
+    sportmonks_id  INTEGER UNIQUE,
+    name           TEXT    NOT NULL,
+    country        TEXT,
+    tier           INTEGER NOT NULL DEFAULT 2
 );
 
 CREATE TABLE IF NOT EXISTS teams (
-    id        INTEGER PRIMARY KEY,
-    name      TEXT    NOT NULL,
-    league_id INTEGER REFERENCES leagues(id)
+    id             INTEGER PRIMARY KEY,
+    sportmonks_id  INTEGER UNIQUE,
+    name           TEXT    NOT NULL,
+    short_name     TEXT,
+    league_id      INTEGER REFERENCES leagues(id)
 );
 
 CREATE TABLE IF NOT EXISTS fixtures (
@@ -43,8 +46,9 @@ CREATE TABLE IF NOT EXISTS fixtures (
     home_score   INTEGER,
     away_score   INTEGER,
     total_goals  INTEGER,
-    created_at   TEXT DEFAULT (datetime('now')),
-    updated_at   TEXT DEFAULT (datetime('now'))
+    sportmonks_id INTEGER UNIQUE,
+    created_at    TEXT DEFAULT (datetime('now')),
+    updated_at    TEXT DEFAULT (datetime('now'))
 );
 
 CREATE TABLE IF NOT EXISTS fixture_stats (
