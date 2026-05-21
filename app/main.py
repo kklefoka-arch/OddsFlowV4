@@ -17,6 +17,7 @@ from app.api.routes_foundation import router as foundation_router
 from app.api.routes_fixtures import router as fixtures_router
 from app.api.routes_inspector import router as inspector_router
 from app.api.routes_ingest import router as ingest_router
+from app.api.routes_picks import router as picks_router
 
 logging.basicConfig(level=settings.LOG_LEVEL)
 logger = logging.getLogger(__name__)
@@ -41,6 +42,7 @@ app.include_router(foundation_router)
 app.include_router(fixtures_router)
 app.include_router(inspector_router)
 app.include_router(ingest_router)
+app.include_router(picks_router)
 
 _static_dir = Path("app/frontend/static")
 if _static_dir.exists():
