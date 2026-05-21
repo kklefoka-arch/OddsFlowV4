@@ -1,0 +1,112 @@
+{% extends "base.html" %}
+{% block title %}Fixtures — OddsFlow V3{% endblock %}
+{% block nav_fixtures %}nav-link-active{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <div class="page-header-left">
+    <h1 class="page-title">FIXTURES</h1>
+    <p class="page-subtitle">Scheduled and settled match records · Settle to update the foundation</p>
+  </div>
+  <div class="summary-stats">
+    <div class="stat-block">
+      <span class="stat-label">TOTAL</span>
+      <span class="stat-value">{{ fixtures | length }}</span>
+    </div>
+    <div class="stat-block">
+      <span class="stat-label">SCHEDULED</span>
+      <span class="stat-value">{{ fixtures | selectattr("status", "equalto", "scheduled") | list | length }}</span>
+    </div>
+    <div class="stat-block stat-block-accent">
+      <span class="stat-label">SETTLED</span>
+      <span class="stat-value amber">{{ fixtures | selectattr("status", "equalto", "settled") | list | length }}</span>
+    </div>
+  </div>
+</div>
+
+<div class="card">
+  <div class="tab-bar filter-bar">
+    <button class="tab-btn active" data-filter="all">ALL</button>
+    <button class="tab-btn" data-filter="scheduled">SCHEDULED</button>
+    <button class="tab-btn" data-filter="settled">SETTLED</button>
+  </div>
+
+  {% if fixtures %}
+  <div class="table-scroll">
+  <table class="table fixtures-table" id="fixtures-table">
+    <thead>
+      <tr>
+        <th>Date</th>
+        <th>Fixture</th>
+        <th>Tier</th>
+        <th>Zone</th>
+        <th>BTS</th>
+        <th class="num-col">H</th>
+        <th class="num-col">D</th>
+        <th class="num-col">A</th>
+        <th>Status</th>
+        <th class="num-col">Score</th>
+        <th></th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for fix in fixtures %}
+      <tr class="fixture-row" data-status="{{ fix.status }}">
+        <td class="date-col">{{ fix.date[:10] if fix.date else "—" }}</td>
+        <td class="fixture-col">
+          <span class="team-name">{{ fix.home_team_name if fix.home_team_name else fix.home_team_id }}</span>
+          <span class="fixture-vs">vs</span>
+          <span class="team-name">{{ fix.away_team_name if fix.away_team_name else fix.away_team_id }}</span>
+        </td>
+        <td>
+          <span class="tier-badge tier-t{{ fix.tier }}">T{{ fix.tier }}</span>
+        </td>
+        <td>
+          {% if fix.draw_zone %}
+            <span class="zone-badge">{{ fix.draw_zone | replace("_"," ") }}</span>
+          {% else %}
+            <span class="dim">—</span>
+          {% endif %}
+        </td>
+        <td>
+          {% if fix.bts_pocket %}
+            <span class="bts-badge">{{ fix.bts_pocket | replace("_"," ") }}</span>
+          {% else %}
+            <span class="dim">—</span>
+          {% endif %}
+        </td>
+        <td class="num-col odd-cell">{{ "%.2f"|format(fix.home_odd) if fix.home_odd else "—" }}</td>
+        <td class="num-col odd-cell">{{ "%.2f"|format(fix.draw_odd) if fix.draw_odd else "—" }}</td>
+        <td class="num-col odd-cell">{{ "%.2f"|format(fix.away_odd) if fix.away_odd else "—" }}</td>
+        <td>
+          {% if fix.status == 'settled' %}
+            <span class="badge-status badge-settled">SETTLED</span>
+          {% else %}
+            <span class="badge-status badge-scheduled">SCHEDULED</span>
+          {% endif %}
+        </td>
+        <td class="num-col score-col">
+          {% if fix.status == 'settled' %}
+            <span class="score">{{ fix.home_score }} – {{ fix.away_score }}</span>
+          {% else %}
+            <span class="dim">—</span>
+          {% endif %}
+        </td>
+        <td class="action-col">
+          {% if fix.status == 'scheduled' %}
+            <button class="btn-settle" data-id="{{ fix.id }}">SETTLE</button>
+          {% endif %}
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  </div>
+  {% else %}
+  <div class="empty-state">
+    <span class="empty-icon">&#9632;</span>
+    <p>No fixtures loaded. Add upcoming fixtures via the Feed page or seed the database.</p>
+  </div>
+  {% endif %}
+</div>
+{% endblock %}

@@ -1,0 +1,52 @@
+{% extends "base.html" %}
+{% block title %}Foundation Matrix — OddsFlow V3{% endblock %}
+{% block nav_foundation %}nav-link-active{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <div class="page-header-left">
+        <h1 class="page-title">FOUNDATION MATRIX</h1>
+        <p class="page-subtitle">Cell-level accuracy baseline across zones and BTS pockets</p>
+    </div>
+    <div class="summary-stats">
+        <div class="stat-block">
+            <span class="stat-label">TOTAL FIXTURES</span>
+            <span class="stat-value">{{ foundation.summary.total_fixtures }}</span>
+        </div>
+        <div class="stat-block stat-block-accent">
+            <span class="stat-label">PROMOTED CELLS</span>
+            <span class="stat-value amber">{{ foundation.summary.promoted_cells }}</span>
+        </div>
+        <div class="stat-block">
+            <span class="stat-label">LAST UPDATED</span>
+            <span class="stat-value stat-value-sm">{{ foundation.summary.last_updated }}</span>
+        </div>
+    </div>
+</div>
+
+<div class="card">
+    <div class="tab-bar">
+        <button class="tab-btn active" data-target="tier-all">ALL</button>
+        <button class="tab-btn" data-target="tier-t1">T1</button>
+        <button class="tab-btn" data-target="tier-t2t3">T2+T3</button>
+    </div>
+
+    <!-- ALL TIER TABLE -->
+    <div id="tier-all" class="tier-table-wrap" data-tier="all">
+        {% set tier_data = foundation.all %}
+        {% include "partials/_foundation_table.html" %}
+    </div>
+
+    <!-- T1 TABLE -->
+    <div id="tier-t1" class="tier-table-wrap hidden" data-tier="t1">
+        {% set tier_data = foundation.t1 %}
+        {% include "partials/_foundation_table.html" %}
+    </div>
+
+    <!-- T2+T3 TABLE -->
+    <div id="tier-t2t3" class="tier-table-wrap hidden" data-tier="t2t3">
+        {% set tier_data = foundation.t2t3 %}
+        {% include "partials/_foundation_table.html" %}
+    </div>
+</div>
+{% endblock %}

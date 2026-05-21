@@ -1,0 +1,107 @@
+{% extends "base.html" %}
+{% block title %}Inspector — OddsFlow V3{% endblock %}
+{% block nav_inspector %}nav-link-active{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <div class="page-header-left">
+    <h1 class="page-title">INSPECTOR</h1>
+    <p class="page-subtitle">Live signals · Reactive to every settled result · No hard locks</p>
+  </div>
+  <div class="summary-stats">
+    <div class="stat-block">
+      <span class="stat-label">SETTLED</span>
+      <span class="stat-value">{{ total_fixtures }}</span>
+    </div>
+    <div class="stat-block stat-block-accent">
+      <span class="stat-label">LIVE CELLS</span>
+      <span class="stat-value amber">{{ promoted_count }}</span>
+    </div>
+    <div class="stat-block">
+      <span class="stat-label">TOTAL CELLS</span>
+      <span class="stat-value stat-value-sm">{{ total_cells }}</span>
+    </div>
+    <div class="stat-block">
+      <span class="stat-label">AS OF</span>
+      <span class="stat-value stat-value-sm">{{ summary.last_updated[:10] }}</span>
+    </div>
+  </div>
+</div>
+
+<!-- Zone Overview Strip -->
+<div class="card insp-zone-card">
+  <div class="insp-zone-tab-bar">
+    <button class="insp-zone-btn active" data-zstrip="all">ALL</button>
+    <button class="insp-zone-btn" data-zstrip="t1">T1</button>
+    <button class="insp-zone-btn" data-zstrip="t2t3">T2+T3</button>
+  </div>
+  {% for tier_key, zone_data in [("all", zone_all), ("t1", zone_t1), ("t2t3", zone_t2t3)] %}
+  <div class="zone-strip {% if tier_key != 'all' %}hidden{% endif %}" id="zstrip-{{ tier_key }}">
+    {% for z in zone_data %}
+    <div class="zs-card {% if z.zone == 'low' %}zs-muted{% endif %}">
+      <div class="zs-name">{{ z.zone | replace("_"," ") | upper }}</div>
+      <div class="zs-metrics">
+        <span class="zs-m" title="Goals avg hit %">G&nbsp;{{ z.avg_goals }}%</span>
+        <span class="zs-m" title="Corners avg hit %">C&nbsp;{{ z.avg_corners }}%</span>
+        <span class="zs-m" title="3-Way avg hit %">3W&nbsp;{{ z.avg_3way }}%</span>
+      </div>
+      <div class="zs-foot">
+        <span class="dim">{{ z.n_fixtures }}fx · {{ z.n_cells }} cells</span>
+        {% if z.promoted > 0 %}
+          <span class="zs-live">&#9650; {{ z.promoted }} live</span>
+        {% elif z.zone == 'low' %}
+          <span class="badge-meas" style="font-size:0.6rem;padding:1px 5px">MEAS</span>
+        {% else %}
+          <span class="dim">—</span>
+        {% endif %}
+      </div>
+    </div>
+    {% endfor %}
+  </div>
+  {% endfor %}
+</div>
+
+<!-- Findings Feed -->
+<div class="card" style="margin-top:1.2rem">
+  <div class="tab-bar">
+    <button class="tab-btn active" data-ifeed="all">ALL TIERS</button>
+    <button class="tab-btn" data-ifeed="t1">T1</button>
+    <button class="tab-btn" data-ifeed="t2t3">T2+T3</button>
+  </div>
+
+  {% for tier_key, findings in [("all", findings_all), ("t1", findings_t1), ("t2t3", findings_t2t3)] %}
+  <div class="findings-feed {% if tier_key != 'all' %}hidden{% endif %}" id="ifeed-{{ tier_key }}">
+    {% if findings %}
+      {% for f in findings %}
+      <div class="finding finding-{{ f.type }}">
+        <div class="finding-icon">
+          {% if f.type == 'fire' %}&#9650;{% elif f.type == 'watch' %}&#9654;{% else %}&#9632;{% endif %}
+        </div>
+        <div class="finding-text">
+          <div class="finding-headline">{{ f.headline }}</div>
+          <div class="finding-detail">{{ f.body }}</div>
+        </div>
+        <div class="finding-tag">
+          {% if f.type == 'fire' %}<span class="badge-fire">LIVE</span>
+          {% elif f.type == 'watch' %}<span class="badge-hold">WATCH</span>
+          {% elif f.type == 'meas' %}<span class="badge-meas">MEAS</span>
+          {% endif %}
+        </div>
+      </div>
+      {% endfor %}
+    {% else %}
+    <div class="empty-state">
+      <span class="empty-icon">&#9632;</span>
+      <p>No signals for this tier yet. Settle fixtures to build the foundation.</p>
+    </div>
+    {% endif %}
+  </div>
+  {% endfor %}
+</div>
+
+<p class="insp-footnote">
+  &#9632;&nbsp;Recomputed live from all settled results on each load.
+  Low zone accumulates data but does not fire.
+  Upcoming fixtures in live cells are flagged — not confirmed until settled.
+</p>
+{% endblock %}

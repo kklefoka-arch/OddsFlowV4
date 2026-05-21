@@ -1,0 +1,174 @@
+{% extends "base.html" %}
+{% block title %}Ingest — OddsFlow V3{% endblock %}
+{% block nav_ingest %}nav-link-active{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <div class="page-header-left">
+    <h1 class="page-title">FIXTURE FEED</h1>
+    <p class="page-subtitle">Add upcoming fixtures · Classify on entry · Settle when results land</p>
+  </div>
+  <div class="summary-stats">
+    <div class="stat-block">
+      <span class="stat-label">QUEUED</span>
+      <span class="stat-value">{{ upcoming | length }}</span>
+    </div>
+  </div>
+</div>
+
+<div class="ingest-layout">
+
+  <!-- Add form -->
+  <div class="card ingest-form-card">
+    <div class="ingest-form-header">NEW FIXTURE</div>
+    <form id="add-fixture-form" class="ingest-form" autocomplete="off">
+
+      <div class="form-row">
+        <div class="form-group">
+          <label class="form-label">DATE / KICKOFF</label>
+          <input class="form-input" type="datetime-local" name="date" required>
+        </div>
+        <div class="form-group">
+          <label class="form-label">TIER</label>
+          <select class="form-input" name="tier" required>
+            <option value="">—</option>
+            <option value="1">T1</option>
+            <option value="2">T2</option>
+            <option value="3">T3</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label class="form-label">LEAGUE</label>
+          <select class="form-input" name="league_id" required>
+            <option value="">—</option>
+            {% for lg in leagues %}
+            <option value="{{ lg.id }}">{{ lg.name }} ({{ lg.country }})</option>
+            {% endfor %}
+          </select>
+        </div>
+      </div>
+
+      <div class="form-row">
+        <div class="form-group form-group-wide">
+          <label class="form-label">HOME TEAM</label>
+          <select class="form-input" name="home_team_id" required>
+            <option value="">—</option>
+            {% for t in teams %}
+            <option value="{{ t.id }}">{{ t.name }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="form-group form-group-wide">
+          <label class="form-label">AWAY TEAM</label>
+          <select class="form-input" name="away_team_id" required>
+            <option value="">—</option>
+            {% for t in teams %}
+            <option value="{{ t.id }}">{{ t.name }}</option>
+            {% endfor %}
+          </select>
+        </div>
+      </div>
+
+      <div class="form-section-label">MATCH ODDS</div>
+      <div class="form-row">
+        <div class="form-group">
+          <label class="form-label">HOME</label>
+          <input class="form-input" type="number" step="0.01" name="home_odd" placeholder="1.40" required>
+        </div>
+        <div class="form-group">
+          <label class="form-label">DRAW</label>
+          <input class="form-input" type="number" step="0.01" name="draw_odd" placeholder="4.80" required>
+        </div>
+        <div class="form-group">
+          <label class="form-label">AWAY</label>
+          <input class="form-input" type="number" step="0.01" name="away_odd" placeholder="7.50" required>
+        </div>
+      </div>
+
+      <div class="form-section-label">BTTS ODDS <span class="form-section-optional">(optional)</span></div>
+      <div class="form-row">
+        <div class="form-group">
+          <label class="form-label">BTTS YES</label>
+          <input class="form-input" type="number" step="0.01" name="btts_yes_odd" placeholder="1.72">
+        </div>
+        <div class="form-group">
+          <label class="form-label">BTTS NO</label>
+          <input class="form-input" type="number" step="0.01" name="btts_no_odd" placeholder="2.05">
+        </div>
+        <div class="form-group">
+          <label class="form-label">GOALS O2.5</label>
+          <input class="form-input" type="number" step="0.01" name="goals_over_25_odd" placeholder="1.65">
+        </div>
+        <div class="form-group">
+          <label class="form-label">CRN O8.5</label>
+          <input class="form-input" type="number" step="0.01" name="corners_over_85_odd" placeholder="1.85">
+        </div>
+      </div>
+
+      <div id="odds-preview" class="odds-preview hidden">
+        <span class="preview-label">LIVE CLASSIFICATION</span>
+        <span id="preview-zone" class="zone-badge">—</span>
+        <span id="preview-bts" class="bts-badge">—</span>
+      </div>
+
+      <div id="ingest-msg" class="ingest-msg hidden"></div>
+
+      <div class="form-actions">
+        <button type="submit" class="btn-primary">ADD FIXTURE</button>
+      </div>
+    </form>
+  </div>
+
+  <!-- Upcoming queue -->
+  <div class="card ingest-queue-card">
+    <div class="ingest-form-header">
+      UPCOMING QUEUE
+      <span class="dim" style="font-weight:400;font-size:0.7rem;margin-left:0.5rem">{{ upcoming | length }} fixtures</span>
+    </div>
+    {% if upcoming %}
+    <div class="table-scroll">
+    <table class="table" id="upcoming-table">
+      <thead>
+        <tr>
+          <th>Date</th>
+          <th>Match</th>
+          <th>Zone</th>
+          <th>BTS</th>
+          <th class="num-col">D Odd</th>
+          <th>Signal</th>
+        </tr>
+      </thead>
+      <tbody id="upcoming-tbody">
+        {% for fx in upcoming %}
+        <tr>
+          <td class="date-col">{{ fx.date[:10] }}</td>
+          <td class="fixture-col">
+            <span class="team-name">{{ fx.home_team_name }}</span>
+            <span class="fixture-vs">vs</span>
+            <span class="team-name">{{ fx.away_team_name }}</span>
+          </td>
+          <td>{% if fx.draw_zone %}<span class="zone-badge">{{ fx.draw_zone | replace("_"," ") }}</span>{% else %}<span class="dim">—</span>{% endif %}</td>
+          <td>{% if fx.bts_pocket %}<span class="bts-badge">{{ fx.bts_pocket | replace("_"," ") }}</span>{% else %}<span class="dim">—</span>{% endif %}</td>
+          <td class="num-col odd-cell">{{ "%.2f"|format(fx.draw_odd) if fx.draw_odd else "—" }}</td>
+          <td>
+            {% if not fx.draw_zone %}
+              <span class="badge-hold" style="font-size:0.62rem">EXCLUDED</span>
+            {% else %}
+              <span class="badge-meas" style="font-size:0.62rem">PENDING</span>
+            {% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    </div>
+    {% else %}
+    <div class="empty-state">
+      <span class="empty-icon">&#9632;</span>
+      <p>No upcoming fixtures queued. Add one using the form.</p>
+    </div>
+    {% endif %}
+  </div>
+
+</div>
+{% endblock %}

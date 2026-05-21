@@ -1,0 +1,80 @@
+{% if tier_data %}
+<div class="table-scroll">
+<table class="table foundation-table">
+    <thead>
+        <tr>
+            <th>Zone</th>
+            <th>BTS Pocket</th>
+            <th class="num-col">n</th>
+            <th class="num-col">n% Zone</th>
+            <th class="num-col">Goals Nat%</th>
+            <th class="num-col">Goals Drop</th>
+            <th class="num-col">Goals ▲</th>
+            <th class="num-col">Corners Nat%</th>
+            <th class="num-col">Corners Drop</th>
+            <th class="num-col">Corners ▲</th>
+            <th class="num-col">3-Way%</th>
+            <th>3-Way Pick</th>
+            <th class="num-col">PROMOTE?</th>
+        </tr>
+    </thead>
+    <tbody>
+        {% set ns = namespace(current_zone=None) %}
+        {% for cell in tier_data %}
+            {% if cell.zone != ns.current_zone %}
+                {% set ns.current_zone = cell.zone %}
+                <tr class="zone-header-row">
+                    <td colspan="13" class="zone-header">
+                        &#9632; {{ cell.zone | upper | replace("_", " ") }}
+                    </td>
+                </tr>
+            {% endif %}
+            <tr class="{% if cell.cell_promoted == 'YES' %}promoted{% endif %} {% if cell.zone == 'low' %}low-zone{% endif %} {% if cell.zone == 'one_sided' %}low-zone{% endif %}">
+                <td class="zone-label">{{ cell.zone | replace("_", " ") }}</td>
+                <td class="bts-label">{{ cell.bts_pocket }}</td>
+                <td class="num-col">{{ cell.n_fixtures }}</td>
+                <td class="num-col dim">{{ "%.1f"|format(cell.n_pct_of_zone) }}%</td>
+                <td class="num-col hit-pct">{{ "%.1f"|format(cell.gn_hit) }}%</td>
+                <td class="num-col">
+                    {% if cell.goals_drop_rank %}
+                        <span class="drop-rank rank-{{ cell.goals_drop_rank }}">▼{{ cell.goals_1up_drop | round(1) }}</span>
+                    {% else %}
+                        <span class="dim">—</span>
+                    {% endif %}
+                </td>
+                <td class="num-col">{{ cell.goals_promote | promote_badge | safe }}</td>
+                <td class="num-col hit-pct">{{ "%.1f"|format(cell.cn_hit) }}%</td>
+                <td class="num-col">
+                    {% if cell.corners_drop_rank %}
+                        <span class="drop-rank rank-{{ cell.corners_drop_rank }}">▼{{ cell.corners_1up_drop | round(1) }}</span>
+                    {% else %}
+                        <span class="dim">—</span>
+                    {% endif %}
+                </td>
+                <td class="num-col">{{ cell.corners_promote | promote_badge | safe }}</td>
+                <td class="num-col hit-pct">{{ "%.1f"|format(cell.threeway_hit) }}%</td>
+                <td>
+                    {% if cell.threeway_pick %}
+                        <span class="pick-label">{{ cell.threeway_pick }}</span>
+                    {% else %}
+                        <span class="dim">—</span>
+                    {% endif %}
+                </td>
+                <td class="num-col">
+                    {% if cell.cell_promoted == 'YES' %}
+                        <span class="cell-promoted-yes">&#10003; YES</span>
+                    {% else %}
+                        <span class="dim">—</span>
+                    {% endif %}
+                </td>
+            </tr>
+        {% endfor %}
+    </tbody>
+</table>
+</div>
+{% else %}
+<div class="empty-state">
+    <span class="empty-icon">&#9632;</span>
+    <p>No foundation data available for this tier. Run the pipeline to generate cell analysis.</p>
+</div>
+{% endif %}
