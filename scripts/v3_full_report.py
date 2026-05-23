@@ -3,9 +3,13 @@ OddsFlow V3 — Full Engine Testing Report (Phases 2–7)
 Runs against v1_calibration_readonly.db. No external deps beyond stdlib + sqlite3.
 """
 from __future__ import annotations
-import sqlite3
+import sys, sqlite3
 from collections import defaultdict
 from pathlib import Path
+
+# Force UTF-8 output on Windows (cp1252 can't encode →, –, etc.)
+if hasattr(sys.stdout, "reconfigure"):
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
 
 DB_PATH = Path(r"C:\OddsFlow2\engine\data\v1_calibration_readonly.db")
 

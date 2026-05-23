@@ -27,7 +27,7 @@ V2.2 (port 8082) is retired as a reference — V4 supersedes it entirely.
 
 - 7 commits on `master`, pushed to GitHub
 - V4 SPA live: Picks / Today / Upcoming / Analysis / Inspector / Reports / Stats tabs
-- 391 upcoming fixtures loaded; 170 picks live in emit_log (idempotent)
+- 1694 upcoming fixtures refreshed via fetch_upcoming.py (2026-05-23 run)
 - Static stone policy: 10 PROMOTED_CELLS (strong x3, standard x4, one_sided x3)
 - emit_log written idempotently via `picks?write=1` or `/picks` (auto-write on load)
 - pick_results written when fixture settled via `/api/fixtures/settle/{id}`
@@ -121,11 +121,15 @@ scripts/v3_full_report.py           Engine testing report (Phases 2-7)
 ## League tier config
 
 Run `fetch_upcoming.py` daily — Sportmonks publishes pre-match odds 48-72h out.
+All 30 subscribed leagues are configured in `fetch_upcoming.py::ACTIVE_LEAGUES`.
 
-- **T1**: 23 leagues (includes Iceland 345, Slovakia 540)
-- **T2**: 8 leagues (includes France National 313)
-- **T3**: 3 leagues
-- Saudi Arabia Division 1 ID unknown — add to T2 when confirmed
+| Tier | Count | Leagues |
+|------|-------|---------|
+| T1 | 13 | PL (8), Ligue 1 (301), La Liga (564), Serie A (384), Allsvenskan (573), Eliteserien (444), Iceland (345), Veikkausliiga (292), Ireland (360), MLS (779), Brazil Serie A (648), J1 (3537), K League 1 (1034) |
+| T2 | 14 | La Liga 2 (567), Superettan (579), Ettan N (585), Ettan S (588), Copa Colombia (681), Primera B (678), Ecuador (696), Canada (1689), Ykköseliga (295), Estonia (286, 289), USL Championship (791), J2/J3 (3550), China (989) |
+| T3 | 3 | USL League One (1607), MLS Next Pro (2545), Bolivia (1098) |
+
+Note: `max_pages=10` cap (500 rows/window) may truncate large windows — bump if fixtures go missing.
 
 ---
 
@@ -164,9 +168,6 @@ No other plugins enabled.
 
 ## Pending next session
 
-- Saudi Arabia Division 1 Sportmonks ID — look up and add to T2 league config
 - `fetch_upcoming.py` — run manually each morning (or schedule via Task Scheduler)
-- Stage `app/engine/static_policy.py` and `fetch_upcoming.py` if not yet committed
 - Remove stale tracked `__pycache__/*.pyc` files via `git rm --cached -r app/**/__pycache__`
-- Verify SPA in browser: all 7 tabs load, picks render correctly, no console errors
-- Run `scripts/v3_full_report.py` to validate engine output on current DB
+- Bump `max_pages` in `fetch_upcoming.py` (currently 10) if fixtures appear truncated
