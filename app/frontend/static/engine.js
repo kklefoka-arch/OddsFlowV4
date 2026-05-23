@@ -1,5 +1,5 @@
 // OddsFlow V4 — engine view client. Vanilla JS, no framework.
-// Talks to: /picks, /analysis/calibration_partition, /diagnostics/*
+// Talks to: /picks, /api/foundation, /diagnostics/*
 
 const fmt = {
   pct: (v) => v == null ? '—' : (v * 100).toFixed(1) + '%',
@@ -424,120 +424,127 @@ function renderMarketRow(market, picks) {
   `;
 }
 
-// ---- Analysis ----
+// ---- Analysis — Foundation Matrix ----
+let _foundationData = null;
+
 async function loadAnalysis() {
-  const minN = document.getElementById('analysis-min-n').value;
-  const tierSel = document.getElementById('analysis-tier');
-  const tier = tierSel ? tierSel.value : '';
   const summary = document.getElementById('analysis-summary');
   const wrap = document.getElementById('analysis-table-wrap');
   summary.innerHTML = '<div class="muted">Loading…</div>';
   wrap.innerHTML = '';
+  document.querySelectorAll('.btn-subtab').forEach(b => b.classList.toggle('active', b.dataset.tier === 'all'));
   try {
-    if (!tier) {
-      const r = await fetch(`/analysis/calibration_partition?min_n=${minN}`);
-      const body = await r.json();
-      renderAnalysisLegacyTable(summary, wrap, body, minN);
-      return;
-    }
-    const r = await fetch(`/analysis/partition_stats_by_tier?min_n=${minN}`);
-    const body = await r.json();
-    const tierKey = tier === 'untiered' ? 'untiered' : `T${tier}`;
-    const filtered = (body.partitions || []).filter(p => p.tier_key === tierKey);
-    summary.innerHTML = `
-      <div class="summary-item"><span class="summary-label">Tier</span><span class="summary-value">${tierKey}</span></div>
-      <div class="summary-item"><span class="summary-label">Partitions</span><span class="summary-value">${filtered.length}</span></div>
-      <div class="summary-item"><span class="summary-label">★ Promoted</span><span class="summary-value">${filtered.filter(p => p.is_promoted).length}</span></div>
-      <div class="summary-item"><span class="summary-label">Min n</span><span class="summary-value">${minN}</span></div>
-    `;
-    if (filtered.length === 0) {
-      wrap.innerHTML = `<div class="empty">No partitions for ${tierKey} above min_n=${minN}.</div>`;
-      return;
-    }
-    wrap.innerHTML = `
-      <table>
-        <thead><tr>
-          <th>Zone</th><th>BTS v2</th>
-          <th class="numeric">n</th>
-          <th class="numeric">Hit %</th>
-          <th class="numeric">Avg odd</th>
-          <th class="numeric">Edge</th>
-          <th>Dominant</th>
-          <th class="numeric">Concentr.</th>
-          <th>Tag</th>
-        </tr></thead>
-        <tbody>
-        ${filtered.map(p => {
-          const cls = p.is_promoted ? 'row-promote' : '';
-          const tag = p.is_promoted ? '★ Promote' : '—';
-          return `
-          <tr class="${cls}">
-            <td>${p.zone}</td>
-            <td>${p.bts_v2}</td>
-            <td class="numeric">${fmt.num(p.n)}</td>
-            <td class="numeric">${fmt.pct(p.hit_rate)}</td>
-            <td class="numeric">${fmt.odd(p.avg_odd)}</td>
-            <td class="numeric">${fmt.edge(p.edge)}</td>
-            <td>${p.dominant_direction || '—'}</td>
-            <td class="numeric">${p.dir_concentration_pct ? p.dir_concentration_pct + '%' : '—'}</td>
-            <td>${tag}</td>
-          </tr>`;
-        }).join('')}
-        </tbody>
-      </table>
-    `;
+    const r = await fetch('/api/foundation');
+    if (!r.ok) throw new Error(`HTTP ${r.status}`);
+    _foundationData = await r.json();
+    renderAnalysisSummary(summary, _foundationData.summary);
+    renderFoundationTable(wrap, _foundationData.all);
   } catch (e) {
-    summary.innerHTML = `<div class="empty">Error: ${e}</div>`;
+    summary.innerHTML = `<div class="empty">Error loading foundation: ${e}</div>`;
   }
 }
 
-function renderAnalysisLegacyTable(summary, wrap, body, minN) {
-  try {
-    summary.innerHTML = `
-      <div class="summary-item"><span class="summary-label">Partitions</span><span class="summary-value">${body.count}</span></div>
-      <div class="summary-item"><span class="summary-label">★ Promoted</span><span class="summary-value">${body.promote_total}</span></div>
-      <div class="summary-item"><span class="summary-label">✗ Discarded</span><span class="summary-value">${body.discard_total}</span></div>
-      <div class="summary-item"><span class="summary-label">Min n</span><span class="summary-value">${minN}</span></div>
-    `;
-    if (body.partitions.length === 0) {
-      wrap.innerHTML = '<div class="empty">No partitions meet the min-n threshold yet.</div>';
-      return;
-    }
-    wrap.innerHTML = `
-      <table>
-        <thead><tr>
-          <th>Zone</th><th>BTS v2</th>
-          <th class="numeric">n</th>
-          <th class="numeric">Hit %</th>
-          <th class="numeric">Avg odd</th>
-          <th class="numeric">Edge</th>
-          <th>Dominant</th>
-          <th class="numeric">Concentr.</th>
-          <th>Tag</th>
-        </tr></thead>
-        <tbody>
-        ${body.partitions.map(p => {
-          const cls = p.is_promoted ? 'row-promote' : '';
-          const tag = p.is_promoted ? '★ Promote' : '—';
-          return `
-          <tr class="${cls}">
-            <td>${p.zone_group}</td>
-            <td>${p.bts_v2}</td>
-            <td class="numeric">${fmt.num(p.n)}</td>
-            <td class="numeric">${fmt.pct(p.hit_rate)}</td>
-            <td class="numeric">${fmt.odd(p.avg_odd)}</td>
-            <td class="numeric">${fmt.edge(p.edge)}</td>
-            <td>${p.dominant_direction || '—'}</td>
-            <td class="numeric">${p.dir_concentration_pct ? p.dir_concentration_pct + '%' : '—'}</td>
-            <td>${tag}</td>
-          </tr>`;
-        }).join('')}
-        </tbody>
-      </table>
-    `;
-  } catch (e) {
-    summary.innerHTML = `<div class="empty">Error: ${e}</div>`;
+function renderAnalysisSummary(el, s) {
+  el.innerHTML = `
+    <div class="summary-item">
+      <span class="summary-label">Total fixtures</span>
+      <span class="summary-value">${fmt.num(s.total_fixtures)}</span>
+    </div>
+    <div class="summary-item">
+      <span class="summary-label">Promoted cells</span>
+      <span class="summary-value">${s.promoted_cells}</span>
+    </div>
+    <div class="summary-item">
+      <span class="summary-label">Last updated</span>
+      <span class="summary-value muted" style="font-size:12px">${(s.last_updated || '').slice(0, 19)} UTC</span>
+    </div>
+  `;
+}
+
+function promoteBadge(status) {
+  if (status === 'PROMOTE')
+    return '<span class="pbadge pbadge-yes">PROMOTE</span>';
+  if (status === 'PROMOTE_TOLERANCE')
+    return '<span class="pbadge pbadge-tol">TOLERANCE</span>';
+  if (status === 'MEASURING')
+    return '<span class="pbadge pbadge-meas">MEASURING</span>';
+  if (status === 'HOLD')
+    return '<span class="pbadge pbadge-hold">HOLD</span>';
+  return '<span class="pbadge pbadge-no">NO</span>';
+}
+
+function renderFoundationTable(wrap, cells) {
+  if (!cells || cells.length === 0) {
+    wrap.innerHTML = '<div class="empty">No foundation data for this tier.</div>';
+    return;
   }
+  const ZONE_ORDER = ['strong', 'standard', 'low', 'one_sided'];
+  const BTS_ORDER  = ['strong_over', 'slight_over', 'slight_under', 'strong_under'];
+  const sorted = [...cells].sort((a, b) => {
+    const zi = ZONE_ORDER.indexOf(a.zone) - ZONE_ORDER.indexOf(b.zone);
+    return zi !== 0 ? zi : BTS_ORDER.indexOf(a.bts_pocket) - BTS_ORDER.indexOf(b.bts_pocket);
+  });
+
+  let currentZone = null;
+  const rows = sorted.map(cell => {
+    let zoneHdr = '';
+    if (cell.zone !== currentZone) {
+      currentZone = cell.zone;
+      zoneHdr = `<tr class="fnd-zone-hdr"><td colspan="13">&#9632; ${cell.zone.toUpperCase().replace(/_/g, ' ')}</td></tr>`;
+    }
+    const drG = cell.goals_drop_rank
+      ? `<span class="fnd-drop rank-${cell.goals_drop_rank}">▼${(cell.goals_1up_drop || 0).toFixed(1)}</span>`
+      : '<span class="muted">—</span>';
+    const drC = cell.corners_drop_rank
+      ? `<span class="fnd-drop rank-${cell.corners_drop_rank}">▼${(cell.corners_1up_drop || 0).toFixed(1)}</span>`
+      : '<span class="muted">—</span>';
+    const promotedCls = cell.cell_promoted ? 'fnd-promoted' : '';
+    const lowCls      = (cell.zone === 'low' || cell.zone === 'one_sided') ? 'fnd-low' : '';
+    const cpBadge     = cell.cell_promoted
+      ? '<span class="pbadge pbadge-yes">✓ YES</span>'
+      : '<span class="muted">—</span>';
+    return `${zoneHdr}
+    <tr class="${promotedCls} ${lowCls}">
+      <td class="fnd-zone">${cell.zone.replace(/_/g, ' ')}</td>
+      <td class="fnd-bts">${cell.bts_pocket}</td>
+      <td class="fnd-num">${cell.n_fixtures}</td>
+      <td class="fnd-num muted">${cell.n_pct_of_zone.toFixed(1)}%</td>
+      <td class="fnd-num fnd-pct">${cell.gn_hit.toFixed(1)}%</td>
+      <td class="fnd-num">${drG}</td>
+      <td class="fnd-num">${promoteBadge(cell.goals_promote)}</td>
+      <td class="fnd-num fnd-pct">${cell.cn_hit.toFixed(1)}%</td>
+      <td class="fnd-num">${drC}</td>
+      <td class="fnd-num">${promoteBadge(cell.corners_promote)}</td>
+      <td class="fnd-num fnd-pct">${cell.threeway_hit.toFixed(1)}%</td>
+      <td>${cell.threeway_pick || '—'}</td>
+      <td class="fnd-num">${promoteBadge(cell.threeway_promote)} ${cpBadge}</td>
+    </tr>`;
+  }).join('');
+
+  wrap.innerHTML = `
+    <div class="fnd-scroll">
+    <table class="fnd-table">
+      <thead>
+        <tr>
+          <th>Zone</th>
+          <th>BTS Pocket</th>
+          <th class="fnd-num">n</th>
+          <th class="fnd-num">n% Zone</th>
+          <th class="fnd-num">Goals Nat%</th>
+          <th class="fnd-num">Goals Drop</th>
+          <th class="fnd-num">Goals ▲</th>
+          <th class="fnd-num">Corners Nat%</th>
+          <th class="fnd-num">Corners Drop</th>
+          <th class="fnd-num">Corners ▲</th>
+          <th class="fnd-num">3-Way%</th>
+          <th>3-Way Pick</th>
+          <th class="fnd-num">PROMOTE?</th>
+        </tr>
+      </thead>
+      <tbody>${rows}</tbody>
+    </table>
+    </div>
+  `;
 }
 
 // ---- Stats ----
@@ -1155,6 +1162,13 @@ function syncPicksCsv() {
 picksDaysInput.addEventListener('input', syncPicksCsv);
 syncPicksCsv();
 document.getElementById('analysis-refresh').addEventListener('click', loadAnalysis);
+document.querySelectorAll('.btn-subtab').forEach(btn => {
+  btn.addEventListener('click', () => {
+    if (!_foundationData) return;
+    document.querySelectorAll('.btn-subtab').forEach(b => b.classList.toggle('active', b === btn));
+    renderFoundationTable(document.getElementById('analysis-table-wrap'), _foundationData[btn.dataset.tier]);
+  });
+});
 document.getElementById('upcoming-refresh').addEventListener('click', loadUpcoming);
 document.getElementById('inspector-refresh').addEventListener('click', loadInspector);
 document.getElementById('inspector-days').addEventListener('change', loadInspector);

@@ -20,7 +20,6 @@ from app.api.routes_fixtures import router as fixtures_router
 from app.api.routes_ingest import router as ingest_router
 from app.api.routes_picks import router as picks_router
 from app.api.routes_upcoming import router as upcoming_router
-from app.api.routes_analysis import router as analysis_router
 from app.api.routes_reports import router as reports_router
 from app.api.routes_inspector import router as inspector_router
 from app.api.routes_diagnostics import router as diagnostics_router
@@ -53,7 +52,6 @@ app.include_router(upcoming_router)
 app.include_router(foundation_router)
 app.include_router(fixtures_router)
 app.include_router(ingest_router)
-app.include_router(analysis_router)
 app.include_router(reports_router)
 app.include_router(inspector_router)
 app.include_router(diagnostics_router)

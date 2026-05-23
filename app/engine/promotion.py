@@ -20,6 +20,10 @@ PROMOTE_LOWER: float = 67.5          # % — tolerance band lower bound
 DROP_SECONDARY_GAP: float = 4.5      # pp — max extra drop vs rank-1 cell
 LOW_ZONE_SUPPRESS: bool = True        # low zone overrides PROMOTE → MEASURING
 
+# Status string constants — exported for use in pick/route logic
+PROMOTE: str = "PROMOTE"
+PROMOTE_TOLERANCE: str = "PROMOTE_TOLERANCE"
+
 
 # ---------------------------------------------------------------------------
 # Internal helpers

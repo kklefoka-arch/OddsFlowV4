@@ -148,8 +148,10 @@ fixtures = all_fixtures
 print(f"\nTotal relevant fixtures: {len(fixtures)}")
 
 for fx in fixtures:
-    sm_id    = fx["id"]
-    fx_date  = (fx.get("starting_at") or "")[:10]
+    sm_id     = fx["id"]
+    raw_start = fx.get("starting_at") or ""
+    kickoff_utc = raw_start.replace("T", " ").split(".")[0]  # "2026-05-23 21:00:00"
+    fx_date   = kickoff_utc[:10]  # date-only for skip comparison
     league_id = fx.get("league_id")
     tier      = ACTIVE_LEAGUES.get(league_id)
 
@@ -191,10 +193,10 @@ for fx in fixtures:
     if existing:
         conn.execute("""
             UPDATE fixtures SET
-                league_id=?, home_odd=?, draw_odd=?, away_odd=?,
+                league_id=?, date=?, home_odd=?, draw_odd=?, away_odd=?,
                 btts_yes_odd=?, btts_no_odd=?, updated_at=?
             WHERE sportmonks_id=?
-        """, (internal_league_id, home_odd, draw_odd, away_odd, btts_yes, btts_no, now_ts, sm_id))
+        """, (internal_league_id, kickoff_utc, home_odd, draw_odd, away_odd, btts_yes, btts_no, now_ts, sm_id))
         updated += 1
     else:
         conn.execute("""
@@ -205,7 +207,7 @@ for fx in fixtures:
                  created_at, updated_at)
             VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
         """, (
-            sm_id, internal_league_id, tier, fx_date, "scheduled",
+            sm_id, internal_league_id, tier, kickoff_utc, "scheduled",
             ht["id"], at["id"],
             home_team.get("name"), away_team.get("name"),
             home_odd, draw_odd, away_odd, btts_yes, btts_no,

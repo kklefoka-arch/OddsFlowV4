@@ -74,24 +74,18 @@
   <!-- ============ ANALYSIS ============ -->
   <section id="analysis" class="panel">
     <div class="panel-header">
-      <h2>Analysis</h2>
+      <h2>Analysis — Foundation Matrix</h2>
       <div class="controls">
-        <label>Tier:
-          <select id="analysis-tier">
-            <option value="" selected>all</option>
-            <option value="1">T1</option>
-            <option value="2">T2</option>
-            <option value="3">T3</option>
-            <option value="untiered">untiered</option>
-          </select>
-        </label>
-        <label>Min n: <input type="number" id="analysis-min-n" value="30" min="1"></label>
         <button id="analysis-refresh">Refresh</button>
       </div>
     </div>
-    <p class="muted">Foundation matrix — hit rates per (zone × BTS) cell from all settled fixtures.
-      ★ PROMOTE = cells in the stone policy (28,425-fixture baseline).</p>
+    <p class="muted">Hit rates per (zone × BTS pocket) cell from all settled fixtures. Live V3 engine result.</p>
     <div id="analysis-summary" class="summary"></div>
+    <div class="analysis-subtabs">
+      <button class="btn-subtab active" data-tier="all">ALL</button>
+      <button class="btn-subtab" data-tier="t1">T1</button>
+      <button class="btn-subtab" data-tier="t2t3">T2+T3</button>
+    </div>
     <div id="analysis-table-wrap"></div>
   </section>
 

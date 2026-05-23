@@ -125,7 +125,6 @@ def partition_drift(
 @router.get("/recent_settled")
 def recent_settled(
     days: int = Query(7, ge=1, le=90),
-    include_legacy: bool = Query(False),
 ) -> dict[str, Any]:
     """Recent settled pick_results grouped by fixture."""
     cutoff = (datetime.now(tz=timezone.utc) - timedelta(days=days)).strftime("%Y-%m-%d %H:%M:%S")

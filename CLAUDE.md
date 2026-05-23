@@ -15,31 +15,36 @@ Markets: DNB (strong/standard zones) or Alpha Win (one_sided zone). No goals/cor
 
 ## Current phase
 
-**Production — picks live.** 170 picks in 3-day window (157 dnb, 13 alpha_win).
-DB: 32,993 fixtures (28,602 settled, 4,391 upcoming). All 7 SPA tabs verified.
-Session 2026-05-23 LATE: league_id bug fixed, fetch run, all tabs tested, engine_knowledge.md created.
+**Production — V3 engine live.** Picks fire from live `compute_foundation()` (not stone policy).
+170 picks in 3-day window (157 dnb, 13 alpha_win). 10 cells promoted, hit rates 69–88%.
+DB: 32,993 fixtures (28,477 settled, 4,391 upcoming). All 7 SPA tabs verified.
+Session 2026-05-23 SESSION 4: Engine wired, Analysis tab rebuilt, OddsFlow2 deleted, 6-agent audit passed.
 
 ## Key files
 
 | File | Purpose |
 |------|---------|
-| `fetch_upcoming.py` | Run daily — refresh pre-match odds from Sportmonks |
-| `app/engine/static_policy.py` | 10 promoted cells — stone policy, never changes |
-| `app/engine/classify.py` | zone_of() + bts_of() — fixture classification |
-| `app/api/routes_picks.py` | Pick generation + emit_log write |
+| `fetch_upcoming.py` | Run daily — refresh pre-match odds + full kickoff datetimes from Sportmonks |
+| `app/engine/promotion.py` | `compute_foundation()` + PROMOTE/PROMOTE_TOLERANCE constants — live engine |
+| `app/engine/foundation.py` | `load_foundation(conn)` — settled fixture loader |
+| `app/engine/classify.py` | `zone_of()` + `bts_of()` — fixture classification |
+| `app/api/routes_picks.py` | Pick generation — live foundation, emit_log write |
+| `app/api/routes_foundation.py` | `GET /api/foundation` — full matrix JSON for Analysis tab |
 | `data/oddsflow_v4.db` | Live SQLite DB (not in git) |
 
 ## Decisions made
 
-- Stone policy locked from 28,425 settled fixtures — 10 cells, hit rates 69–88%
-- No goals/corners markets — DNB and Alpha Win only
+- Picks fire from live `compute_foundation()` — not hardcoded stone policy
+- Analysis tab calls `/api/foundation` with ALL/T1/T2+T3 sub-tabs
+- No goals/corners markets — DNB (strong/standard) and Alpha Win (one_sided) only
 - Low zone suppressed (MEASURING) — accumulating data
+- `fetch_upcoming.py` stores full kickoff datetimes ("2026-05-23 21:00:00"), not date-only
 - Single SQLite DB — no external DB services
-- `fixtures.league_id` must store internal DB leagues.id — fetch_upcoming.py patched to resolve via `_league_id_map`
+- `fixtures.league_id` stores internal DB leagues.id (resolved via `_league_id_map`)
 
 ## Next steps
 
-1. Run `python fetch_upcoming.py` daily for fresh odds
+1. Run `python fetch_upcoming.py` daily — also backfills kickoff datetimes on existing rows
 2. Monitor Reports tab — pick_results will populate as upcoming fixtures settle
 3. Consider bumping fetch windows for July–Oct (hitting 1,000-fixture cap)
 

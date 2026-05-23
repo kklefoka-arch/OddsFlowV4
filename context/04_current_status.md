@@ -51,3 +51,4 @@ python fetch_upcoming.py
 | 2026-05-23 AM | League audit, fetch run (1694 updated), SPA verified, engine report |
 | 2026-05-23 PM | Consolidation — renamed V3→V4 folder+repo, archived retired projects, cleaned 6 GitHub repos, restructured context per workflow doc |
 | 2026-05-23 LATE | Pending items cleared. league_id bug fixed (1,984 upcoming fixtures corrected + fetch_upcoming.py patched). Fetch run (1,120 inserted, 1,838 updated). All 7 tabs verified. context/engine_knowledge.md created. |
+| 2026-05-23 SESSION 4 | V3 engine fully wired to V4 SPA. Picks now fire from live compute_foundation() (not stone policy). Analysis tab rebuilt with ALL/T1/T2+T3 Foundation Matrix. fetch_upcoming.py stores full kickoff datetimes. PROMOTE/PROMOTE_TOLERANCE constants added to promotion.py. Dead routes_analysis.py removed. OddsFlow2 deleted. 6-agent audit deployed — all clear. 10 cells promoted (28,477 fixtures). Server confirmed healthy. |
