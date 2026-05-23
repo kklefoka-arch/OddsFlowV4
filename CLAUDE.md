@@ -1,6 +1,6 @@
-# OddsFlow V3 — Project orientation
+# OddsFlow V4 — Project orientation
 
-Read this file at the start of every session. It is the single source of truth for V3.
+Read this file at the start of every session. It is the single source of truth for V4.
 **Update this file at the start, during, and at the end of every session, then commit and push.**
 Human-readable context docs are in `context/` — update `context/04_current_status.md` each session.
 
@@ -8,30 +8,32 @@ Human-readable context docs are in `context/` — update `context/04_current_sta
 
 ## What this project is
 
-OddsFlow V3 is the clean production football betting analytics engine.
+OddsFlow V4 is the unified production football betting analytics engine.
 It ingests fixtures + odds from Sportmonks, classifies each fixture into
-a (zone × bts_pocket) cell, and emits picks for promoted cells.
+a (zone × bts_pocket) cell, and emits picks for 10 PROMOTED_CELLS (stone policy).
+All picks fire `dnb` (strong/standard zones) or `alpha_win` (one_sided zone).
+No goals/corners markets in V4.
 
 Operator: Katlego (KK). Single-user system. Port 8083 locally.
-Remote: `github.com/kklefoka-arch/OddsFlowV3.git` (nothing pushed yet as of 2026-05-23).
+Remote: `github.com/kklefoka-arch/OddsFlowV3.git`
 Deploy target: Railway (Procfile + railway.toml present).
 ngrok tunnel: `https://steadier-legwarmer-finlike.ngrok-free.dev` → port 8083.
 
-V2.2 (port 8082) runs in parallel as the reference engine — see `C:\OddsFlow2\CLAUDE.md`.
+V2.2 (port 8082) is retired as a reference — V4 supersedes it entirely.
 
 ---
 
 ## Current state (as of 2026-05-23)
 
-- 5 commits on `master`, **none pushed to GitHub**
-- 412 upcoming fixtures loaded (MLS 779, Ireland 360, PL 8)
-- 25 picks live in promoted cells (standard x16, strong x6, one_sided x3; DNB x22, Alpha Win x3)
-- Uncommitted source changes: `routes_fixtures.py`, `routes_ingest.py`, `routes_picks.py`, `fixtures.html`
-- Untracked: `static_policy.py`, `fetch_upcoming.py` — need staging and commit
+- 7 commits on `master`, pushed to GitHub
+- V4 SPA live: Picks / Today / Upcoming / Analysis / Inspector / Reports / Stats tabs
+- 391 upcoming fixtures loaded; 170 picks live in emit_log (idempotent)
+- Static stone policy: 10 PROMOTED_CELLS (strong x3, standard x4, one_sided x3)
+- emit_log written idempotently via `picks?write=1` or `/picks` (auto-write on load)
+- pick_results written when fixture settled via `/api/fixtures/settle/{id}`
 
-**Upcoming fixture status bug (fixed 2026-05-22):** all upcoming queries now use
-`home_score IS NULL AND date >= date('now')`, not `status='scheduled'`. Applied across
-`routes_fixtures.py`, `routes_picks.py`, `routes_ingest.py`.
+**Upcoming fixture query rule** (all queries use):
+`home_score IS NULL AND date >= date('now')`
 
 ---
 
@@ -39,26 +41,34 @@ V2.2 (port 8082) runs in parallel as the reference engine — see `C:\OddsFlow2\
 
 ```
 app/
-├── main.py                         FastAPI app entry point + lifespan
+├── main.py                         FastAPI V4 entry — SPA at /, all routers
 ├── settings.py                     Pydantic-settings (DATABASE_URL, APP_ENV, LOG_LEVEL)
 ├── api/
-│   ├── routes_health.py            GET /healthz
-│   ├── routes_fixtures.py          GET /fixtures/upcoming
-│   ├── routes_foundation.py        GET /foundation (Foundation Matrix)
+│   ├── routes_health.py            GET /health
+│   ├── routes_fixtures.py          GET /fixtures (HTML) + /api/fixtures (JSON) + settle
+│   ├── routes_foundation.py        GET /foundation (Foundation Matrix HTML)
 │   ├── routes_ingest.py            POST /ingest/* (Sportmonks ingest)
-│   ├── routes_inspector.py         GET /inspector/*
-│   └── routes_picks.py             GET /picks (promotion-based picks)
+│   ├── routes_picks.py             GET /picks — stone policy picks + emit_log write
+│   ├── routes_upcoming.py          GET /upcoming — scheduled fixtures with PROMOTE chips
+│   ├── routes_analysis.py          GET /analysis/* — calibration from settled fixtures
+│   ├── routes_reports.py           GET /reports/* — emit performance windows
+│   ├── routes_inspector.py         GET /inspector/* — partition drift vs stone policy
+│   └── routes_diagnostics.py       GET /diagnostics/* + /healthz/deep
 ├── engine/
 │   ├── classify.py                 zone_of(), bts_of(), classify_fixture()
 │   ├── natural_lines.py            HALF_LINES — natural/system lines per zone/market
 │   ├── promotion.py                compute_foundation() — hit rates + promotion logic
 │   ├── foundation.py               Foundation Matrix builder
-│   └── static_policy.py            Static zone-market policy (untracked)
+│   └── static_policy.py            PROMOTED_CELLS stone policy (10 cells, locked)
 ├── db/
-│   ├── database.py                 SQLite connection + init_db()
-│   └── schema.sql                  Full schema (leagues, teams, fixtures, emit_log, etc.)
+│   ├── database.py                 SQLite connection + init_db() + migrations
+│   └── schema.sql                  Full schema (leagues, teams, fixtures, emit_log,
+│                                   pick_results, system_health)
 └── frontend/
-    └── templates/                  Jinja2 HTML templates (fixtures, picks, inspector…)
+    ├── templates/engine_view.html  V4 SPA (Picks default tab)
+    └── static/
+        ├── engine.js               V4 SPA JavaScript
+        └── engine.css              V4 SPA stylesheet
 
 data/oddsflow_v3.db                 SQLite database (not in git)
 fetch_upcoming.py                   Run daily — refreshes pre-match odds from Sportmonks
@@ -154,8 +164,9 @@ No other plugins enabled.
 
 ## Pending next session
 
-- Commit and push V3 to GitHub (5 local commits + uncommitted route changes)
-- Confirm `static_policy.py` and `fetch_upcoming.py` should be staged
-- Run V3 engine testing report (`scripts/v3_full_report.py`)
-- Saudi Arabia Division 1 Sportmonks ID — look up and add to T2
-- `fetch_upcoming.py` should be scheduled or run manually each morning
+- Saudi Arabia Division 1 Sportmonks ID — look up and add to T2 league config
+- `fetch_upcoming.py` — run manually each morning (or schedule via Task Scheduler)
+- Stage `app/engine/static_policy.py` and `fetch_upcoming.py` if not yet committed
+- Remove stale tracked `__pycache__/*.pyc` files via `git rm --cached -r app/**/__pycache__`
+- Verify SPA in browser: all 7 tabs load, picks render correctly, no console errors
+- Run `scripts/v3_full_report.py` to validate engine output on current DB
