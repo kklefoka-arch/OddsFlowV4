@@ -4,6 +4,7 @@
 Read this file at the start of every session. Update it at the end. Commit it.
 
 Operator: Katlego (KK) | Port: 8083 | Repo: `github.com/kklefoka-arch/OddsFlowV4`
+Host (local): `http://localhost:8083` | Host (ngrok): `https://steadier-legwarmer-finlike.ngrok-free.dev`
 
 ---
 

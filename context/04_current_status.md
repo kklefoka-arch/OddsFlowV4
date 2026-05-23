@@ -14,8 +14,8 @@ Last updated: 2026-05-24 (Session 6)
 | ngrok | https://steadier-legwarmer-finlike.ngrok-free.dev |
 | DB | `data/oddsflow_v4.db` |
 | GitHub | `github.com/kklefoka-arch/OddsFlowV4` |
-| Picks (3d window) | 170 picks — 157 dnb, 13 alpha_win — all promote class |
-| Upcoming fixtures | 3,037 upcoming (391 in 7d window) |
+| Picks today (1d)  | 149 picks — 138 dnb, 11 alpha_win |
+| Upcoming fixtures | 3,037 upcoming |
 | DB total fixtures | 31,644 (28,607 settled, 3,037 upcoming) |
 | draw_zone filled  | 28,710 fixtures with draw_zone + bts_pocket stored |
 | emit_log | 207 (all PENDING — upcoming only, no settled emits yet) |
