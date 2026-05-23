@@ -348,20 +348,24 @@ Per promoted cell:
 
 ## Phase 8: SCORE UPDATE
 
-**What**: Fixture is played. Scores become available. Our DB must be updated with `home_score`, `away_score`.
+**What**: Fixture is played. Scores become available. Our DB is updated with `home_score`, `away_score`, `total_goals`, and corner stats.
 
-**[GAP — CRITICAL]**: There is no automated score update pipeline. `fetch_upcoming.py` only updates odds for upcoming fixtures (`home_score IS NULL`). It does not fetch or write scores.
+**Script**: `fetch_results.py` — **Gap G1 closed (2026-05-23)**
 
-**How the 28,477 existing settled fixtures got their scores**: These came from the V2/V3 historical ingestion pipeline (now removed). They were seeded with scores already.
+**Script**: `fetch_results.py`
 
-**What this means going forward**: Fixtures fetched by the current `fetch_upcoming.py` will NEVER have their scores written unless a score-fetch pipeline is built. Without scores, Phase 9 (settle) cannot run, Phase 10 (reports) has no data, and Phase 11 (recalibrate) never grows.
+**Trigger**: Manual — run after each match day.
 
-**Required but not yet built**: A `fetch_results.py` script that:
-1. Queries fixtures where `date < now AND home_score IS NULL`
-2. Calls Sportmonks results endpoint for those fixture IDs
-3. Writes `home_score`, `away_score`, `total_goals` to `fixtures`
-4. Writes corner stats to `fixture_stats`
-5. Updates `status = 'settled'`
+**Logic**:
+1. Finds fixtures where `home_score IS NULL AND sportmonks_id IS NOT NULL AND date < today`
+2. Groups by week (Monday–Sunday) to minimise API calls
+3. Fetches via `fixtures/between/{start}/{end}?include=scores;statistics;participants`
+4. Parses FT score from `description="CURRENT"` entries
+5. Parses corners from `type_id=34` statistics (verified)
+6. Writes `home_score`, `away_score`, `total_goals`, `status='settled'` to `fixtures`
+7. Writes `home_corners`, `away_corners`, `total_corners` to `fixture_stats`
+
+**Verified**: First run 2026-05-23. 5 Irish Premier Division fixtures settled. Corners confirmed (Shamrock Rovers 3/4).
 
 ---
 

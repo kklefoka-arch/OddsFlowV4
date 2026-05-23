@@ -25,7 +25,8 @@ Session 5: Zero-based 6-phase test, 4 bugs fixed (date filter, live foundation, 
 | File | Purpose |
 |------|---------|
 | `fetch_upcoming.py` | Run daily — refresh pre-match odds + full kickoff datetimes from Sportmonks |
-| `settle.py` | Run after matches complete — writes settled picks to pick_results table |
+| `fetch_results.py` | Run after match days — writes scores + corners for completed fixtures |
+| `settle.py` | Run after fetch_results.py — writes settled pick outcomes to pick_results |
 | `app/engine/promotion.py` | `compute_foundation()` + PROMOTE/PROMOTE_TOLERANCE constants — live engine |
 | `app/engine/foundation.py` | `load_foundation(conn)` — settled fixture loader |
 | `app/engine/classify.py` | `zone_of()` + `bts_of()` — fixture classification |
@@ -45,9 +46,13 @@ Session 5: Zero-based 6-phase test, 4 bugs fixed (date filter, live foundation, 
 
 ## Next steps
 
-1. Run `python fetch_upcoming.py` daily — refreshes odds + kickoff datetimes
-2. Run `python settle.py` after matches complete — writes pick_results (enables Inspector calendar)
-3. Consider bumping fetch windows for July–Oct (hitting 1,000-fixture cap)
+**Daily flow (in order):**
+1. `python fetch_upcoming.py` — refresh pre-match odds + kickoff datetimes
+2. `python fetch_results.py` — write scores + corners for completed fixtures
+3. `python settle.py` — settle picks from emit_log into pick_results
+
+**Weekly/ongoing:**
+- Consider bumping fetch windows for July–Oct (hitting 1,000-fixture cap)
 
 ## Reference documents
 
