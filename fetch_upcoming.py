@@ -111,6 +111,14 @@ teams_seen = {
     ).fetchall()
 }
 
+# Build sportmonks_id → internal leagues.id map so fixtures store the correct FK
+_league_id_map: dict[int, int] = {
+    r["sportmonks_id"]: r["id"]
+    for r in conn.execute(
+        "SELECT id, sportmonks_id FROM leagues WHERE sportmonks_id IS NOT NULL"
+    ).fetchall()
+}
+
 inserted = updated = skipped = 0
 
 # Fetch in monthly windows — keeps each batch small and avoids timeouts.
@@ -129,7 +137,7 @@ for start, end in windows:
     batch = fetch_all(
         f"fixtures/between/{start}/{end}",
         {"include": "participants;odds"},
-        max_pages=10,
+        max_pages=20,
     )
     # Filter to active leagues only
     relevant = [fx for fx in batch if fx.get("league_id") in ACTIVE_LEAGUES]
@@ -148,6 +156,9 @@ for fx in fixtures:
     if not tier or fx_date < TODAY:
         skipped += 1
         continue
+
+    # Resolve internal DB league id (fallback: sportmonks id, works for legacy rows)
+    internal_league_id = _league_id_map.get(league_id, league_id)
 
     participants = fx.get("participants", [])
     home_team = next((p for p in participants if p.get("meta", {}).get("location") == "home"), None)
@@ -180,10 +191,10 @@ for fx in fixtures:
     if existing:
         conn.execute("""
             UPDATE fixtures SET
-                home_odd=?, draw_odd=?, away_odd=?,
+                league_id=?, home_odd=?, draw_odd=?, away_odd=?,
                 btts_yes_odd=?, btts_no_odd=?, updated_at=?
             WHERE sportmonks_id=?
-        """, (home_odd, draw_odd, away_odd, btts_yes, btts_no, now_ts, sm_id))
+        """, (internal_league_id, home_odd, draw_odd, away_odd, btts_yes, btts_no, now_ts, sm_id))
         updated += 1
     else:
         conn.execute("""
@@ -194,7 +205,7 @@ for fx in fixtures:
                  created_at, updated_at)
             VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
         """, (
-            sm_id, league_id, tier, fx_date, "scheduled",
+            sm_id, internal_league_id, tier, fx_date, "scheduled",
             ht["id"], at["id"],
             home_team.get("name"), away_team.get("name"),
             home_odd, draw_odd, away_odd, btts_yes, btts_no,

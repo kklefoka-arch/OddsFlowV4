@@ -5,8 +5,6 @@ Read this file at the start of every session. Update it at the end. Commit it.
 
 Operator: Katlego (KK) | Port: 8083 | Repo: `github.com/kklefoka-arch/OddsFlowV4`
 
-> After session rename: folder will be `C:\OddsFlowV4`, DB is `data/oddsflow_v4.db`
-
 ---
 
 ## Project overview
@@ -17,8 +15,9 @@ Markets: DNB (strong/standard zones) or Alpha Win (one_sided zone). No goals/cor
 
 ## Current phase
 
-**Production — picks live.** 182 picks in 7-day window (168 dnb, 14 alpha_win).
-Session 2026-05-23: Consolidation — renamed V3→V4, archived retired projects, one repo.
+**Production — picks live.** 170 picks in 3-day window (157 dnb, 13 alpha_win).
+DB: 32,993 fixtures (28,602 settled, 4,391 upcoming). All 7 SPA tabs verified.
+Session 2026-05-23 LATE: league_id bug fixed, fetch run, all tabs tested, engine_knowledge.md created.
 
 ## Key files
 
@@ -29,7 +28,6 @@ Session 2026-05-23: Consolidation — renamed V3→V4, archived retired projects
 | `app/engine/classify.py` | zone_of() + bts_of() — fixture classification |
 | `app/api/routes_picks.py` | Pick generation + emit_log write |
 | `data/oddsflow_v4.db` | Live SQLite DB (not in git) |
-| `scripts/update_leagues.py` | Fix leagues table — run once (18 missing leagues) |
 
 ## Decisions made
 
@@ -37,12 +35,13 @@ Session 2026-05-23: Consolidation — renamed V3→V4, archived retired projects
 - No goals/corners markets — DNB and Alpha Win only
 - Low zone suppressed (MEASURING) — accumulating data
 - Single SQLite DB — no external DB services
+- `fixtures.league_id` must store internal DB leagues.id — fetch_upcoming.py patched to resolve via `_league_id_map`
 
 ## Next steps
 
-1. Run `python scripts/update_leagues.py` — fixes blank league_name/country in SPA (18 missing leagues)
-2. Run `python fetch_upcoming.py` daily for fresh odds
-3. Run `python scripts/v3_full_report.py` to validate engine on calibration DB
+1. Run `python fetch_upcoming.py` daily for fresh odds
+2. Monitor Reports tab — pick_results will populate as upcoming fixtures settle
+3. Consider bumping fetch windows for July–Oct (hitting 1,000-fixture cap)
 
 ## Reference documents
 
@@ -53,6 +52,7 @@ Session 2026-05-23: Consolidation — renamed V3→V4, archived retired projects
 | `context/03_engine_rules.md` | Classification + promotion logic |
 | `context/04_current_status.md` | Current state, known issues, session log |
 | `context/05_architecture.md` | File map, process flow, API routes, DB tables |
+| `context/engine_knowledge.md` | Full engine knowledge — tabs, abbreviations, architecture |
 
 ## Session checklist
 
