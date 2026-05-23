@@ -58,6 +58,8 @@ Session 5: Zero-based 6-phase test, 4 bugs fixed (date filter, live foundation, 
 | `context/03_engine_rules.md` | Classification + promotion logic |
 | `context/04_current_status.md` | Current state, known issues, session log |
 | `context/05_architecture.md` | File map, process flow, API routes, DB tables |
+| `context/06_process_flow.md` | **Full fixture lifecycle** — every phase, function, table, feedback loop, and gap |
+| `context/07_system_language.md` | **System language** — every term defined; what exists vs what does not |
 | `context/engine_knowledge.md` | Full engine knowledge — tabs, abbreviations, architecture |
 
 ## Session checklist
