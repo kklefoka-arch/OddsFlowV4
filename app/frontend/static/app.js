@@ -38,6 +38,17 @@
     });
   });
 
+  /* Inspector lens switcher (PRE-MATCH / POST-MATCH) */
+  qsa('.lens-btn[data-lens]').forEach(function(btn){
+    btn.addEventListener('click', function(){
+      var k = btn.dataset.lens;
+      qsa('.lens-btn').forEach(function(b){ b.classList.toggle('active', b === btn); });
+      var pre = qs('#lens-prematch'), post = qs('#lens-postmatch');
+      if(pre)  pre.classList.toggle('hidden',  k !== 'prematch');
+      if(post) post.classList.toggle('hidden', k !== 'postmatch');
+    });
+  });
+
   /* Inspector findings feed tabs */
   qsa('.tab-btn[data-ifeed]').forEach(function(btn){
     btn.addEventListener("click",function(){
@@ -172,9 +183,9 @@
           },
           options: {
             responsive: true, maintainAspectRatio: false,
-            plugins: { legend: { labels: { color: '#6A8CAA', font: { family: 'Inter', size: 11 } } } },
+            plugins: { legend: { labels: { color: '#6A8CAA', font: { family: 'Nunito', size: 11 } } } },
             scales: {
-              x: { ticks: { color: '#6A8CAA', font: { family: 'Inter', size: 11 } }, grid: { color: '#182030' } },
+              x: { ticks: { color: '#6A8CAA', font: { family: 'Nunito', size: 11 } }, grid: { color: '#182030' } },
               y: { min: 40, max: 100, ticks: { color: '#6A8CAA', font: { family: 'JetBrains Mono', size: 10 } }, grid: { color: '#182030' } }
             }
           }

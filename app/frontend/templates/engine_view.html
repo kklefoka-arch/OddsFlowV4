@@ -1,0 +1,195 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>OddsFlow V4 — Engine</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/static/engine.css">
+</head>
+<body>
+
+<header class="topbar">
+  <div class="brand">
+    <span class="logo">OF</span>
+    <span class="brand-name">OddsFlow <span class="brand-v4">V4</span> <span class="muted">— Engine</span></span>
+  </div>
+  <div class="topbar-right">
+    <span id="health-badge" class="badge badge-unknown">checking…</span>
+    <span class="env-tag" id="env-tag">env: ?</span>
+  </div>
+</header>
+
+<nav class="tabs">
+  <button class="tab active" data-tab="picks">Picks</button>
+  <button class="tab" data-tab="upcoming">Upcoming</button>
+  <button class="tab" data-tab="analysis">Analysis</button>
+  <button class="tab" data-tab="inspector">Inspector</button>
+  <button class="tab" data-tab="reports">Reports</button>
+  <button class="tab" data-tab="today">Today</button>
+  <button class="tab" data-tab="stats">Stats</button>
+</nav>
+
+<main>
+  <!-- ============ PICKS ============ -->
+  <section id="picks" class="panel active">
+    <div class="panel-header">
+      <h2>Picks</h2>
+      <div class="controls">
+        <label>Days: <input type="number" id="picks-days" value="3" min="1" max="14"></label>
+        <button id="picks-refresh">Refresh</button>
+        <a id="picks-csv" class="button-link" href="/reports/paper_trading.csv?days=3" download>↓ CSV</a>
+      </div>
+    </div>
+    <p class="muted">Upcoming fixtures in promoted cells. Click any card to deep-dive in Inspector.</p>
+    <div id="picks-summary" class="summary"></div>
+    <div id="picks-list" class="cards"></div>
+    <div id="picks-prx9" class="prx9-panel"></div>
+  </section>
+
+  <!-- ============ UPCOMING ============ -->
+  <section id="upcoming" class="panel">
+    <div class="panel-header">
+      <h2>Upcoming Fixtures</h2>
+      <div class="controls">
+        <label>Days: <input type="number" id="upcoming-days" value="7" min="1" max="14"></label>
+        <label>Tier:
+          <select id="upcoming-tier">
+            <option value="">all</option>
+            <option value="1">1</option>
+            <option value="2">2</option>
+            <option value="3">3</option>
+          </select>
+        </label>
+        <button id="upcoming-refresh">Refresh</button>
+      </div>
+    </div>
+    <p class="muted">All classified fixtures. ★ PROMOTE = cell in stone policy.</p>
+    <div id="upcoming-summary" class="summary"></div>
+    <div id="upcoming-list" class="cards"></div>
+  </section>
+
+  <!-- ============ ANALYSIS ============ -->
+  <section id="analysis" class="panel">
+    <div class="panel-header">
+      <h2>Analysis</h2>
+      <div class="controls">
+        <label>Tier:
+          <select id="analysis-tier">
+            <option value="" selected>all</option>
+            <option value="1">T1</option>
+            <option value="2">T2</option>
+            <option value="3">T3</option>
+            <option value="untiered">untiered</option>
+          </select>
+        </label>
+        <label>Min n: <input type="number" id="analysis-min-n" value="30" min="1"></label>
+        <button id="analysis-refresh">Refresh</button>
+      </div>
+    </div>
+    <p class="muted">Foundation matrix — hit rates per (zone × BTS) cell from all settled fixtures.
+      ★ PROMOTE = cells in the stone policy (28,425-fixture baseline).</p>
+    <div id="analysis-summary" class="summary"></div>
+    <div id="analysis-table-wrap"></div>
+  </section>
+
+  <!-- ============ INSPECTOR ============ -->
+  <section id="inspector" class="panel">
+    <div class="panel-header">
+      <h2>Inspector — Pre-Fixture</h2>
+      <div class="controls">
+        <label>Drift window:
+          <select id="inspector-days">
+            <option value="7">7d</option>
+            <option value="14">14d</option>
+            <option value="30" selected>30d</option>
+            <option value="90">90d</option>
+          </select>
+        </label>
+        <button id="inspector-refresh">Refresh</button>
+      </div>
+    </div>
+    <p class="muted">Click a pick card to deep-dive a fixture. The drift table shows recent vs historical
+      hit rates for promoted cells — display only, does not suppress firing.</p>
+    <div id="inspector-selected"></div>
+    <h3 class="section-h">Partition drift vs historical baseline</h3>
+    <div id="inspector-drift-summary" class="summary"></div>
+    <div id="inspector-drift-table"></div>
+  </section>
+
+  <!-- ============ REPORTS ============ -->
+  <section id="reports" class="panel">
+    <div class="panel-header">
+      <h2>Reports — Post-Match</h2>
+      <div class="controls">
+        <label>Window:
+          <select id="reports-days">
+            <option value="3">3d</option>
+            <option value="7" selected>7d</option>
+            <option value="14">14d</option>
+            <option value="30">30d</option>
+            <option value="90">90d</option>
+          </select>
+        </label>
+        <label>Tier:
+          <select id="reports-tier">
+            <option value="" selected>all</option>
+            <option value="1">T1</option>
+            <option value="2">T2</option>
+            <option value="3">T3</option>
+            <option value="untiered">untiered</option>
+          </select>
+        </label>
+        <button id="reports-refresh">Refresh</button>
+      </div>
+    </div>
+    <p class="muted">All emitted picks re-settled against final scores. Full engine self-evaluation.</p>
+
+    <h3 class="section-h">Settlement activity</h3>
+    <div id="reports-settle-activity"></div>
+
+    <h3 class="section-h">Multi-window performance</h3>
+    <div id="reports-emit-performance"></div>
+
+    <h3 class="section-h">Per-market hit rates</h3>
+    <div id="reports-emit-market-breakdown"></div>
+
+    <h3 class="section-h">Recent fixtures — per-pick readback</h3>
+    <div id="reports-emit-recent-summary" class="summary"></div>
+    <div id="reports-emit-recent-list" class="cards"></div>
+  </section>
+
+  <!-- ============ TODAY ============ -->
+  <section id="today" class="panel">
+    <div class="panel-header">
+      <h2>Today</h2>
+      <div class="controls">
+        <button id="today-refresh">Refresh</button>
+      </div>
+    </div>
+    <div id="today-cron-chip-wrap" class="today-cron-line"></div>
+    <div id="today-summary" class="summary"></div>
+    <h3 class="section-h">By market today</h3>
+    <div id="today-by-market" class="summary"></div>
+  </section>
+
+  <!-- ============ STATS ============ -->
+  <section id="stats" class="panel">
+    <div class="panel-header"><h2>Stats</h2></div>
+    <div id="stats-content"></div>
+  </section>
+</main>
+
+<footer class="footer">
+  <span class="muted">OddsFlow V4 — engine view (operator surface)</span>
+  <span class="muted">·</span>
+  <a href="/docs" target="_blank" class="muted">/docs</a>
+  <span class="muted">·</span>
+  <a href="/healthz" target="_blank" class="muted">/healthz</a>
+</footer>
+
+<script src="/static/engine.js"></script>
+</body>
+</html>

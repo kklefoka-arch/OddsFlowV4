@@ -102,3 +102,10 @@ CREATE TABLE IF NOT EXISTS pick_results (
     actual_value REAL,
     notes       TEXT
 );
+
+CREATE TABLE IF NOT EXISTS system_health (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    metric      TEXT NOT NULL,
+    value       TEXT,
+    recorded_at TEXT DEFAULT (datetime('now'))
+);

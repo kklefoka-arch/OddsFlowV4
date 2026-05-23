@@ -1,43 +1,44 @@
 /* ================================================================
-   OddsFlow V3 — Industrial Dark Stylesheet
-   Bloomberg Terminal meets sports analytics
+   OddsFlow V3 — Stylesheet
    ================================================================ */
 
-/* ---- Google Fonts already loaded in base.html ---- */
+/* ---- Google Fonts loaded in base.html ---- */
 
 /* ================================================================
    CSS CUSTOM PROPERTIES
    ================================================================ */
 :root {
-    --bg-base:        #080C10;
-    --bg-nav:         #0A0F18;
-    --bg-card:        #0D1520;
-    --bg-row-alt:     #0A1018;
-    --border:         #182030;
-    --border-strong:  #223040;
+    --bg-base:        #0C0E16;
+    --bg-nav:         #0F1120;
+    --bg-card:        #13162A;
+    --bg-row-alt:     #0F1122;
+    --border:         #1E2440;
+    --border-strong:  #2A3258;
 
-    --text-primary:   #DCE8F5;
-    --text-secondary: #6A8CAA;
-    --text-dim:       #2E4560;
-    --text-muted:     #1E3050;
+    --text-primary:   #E8EAF6;
+    --text-secondary: #7B83B0;
+    --text-dim:       #3A4168;
+    --text-muted:     #252C50;
 
-    --amber:          #F5A623;
-    --amber-dim:      #A87018;
-    --green:          #00D68F;
-    --green-bg:       #002518;
-    --red:            #EF4444;
-    --steel:          #4A6888;
-    --cyan:           #00C8FF;
-    --cyan-dim:       #004870;
-    --blue:           #4090F0;
-    --blue-dim:       #183870;
+    --amber:          #F59E0B;
+    --amber-dim:      #92600A;
+    --green:          #10B981;
+    --green-bg:       #052018;
+    --red:            #F43F5E;
+    --red-bg:         #200818;
+    --steel:          #5B6490;
+    --cyan:           #38BDF8;
+    --cyan-dim:       #0A3A5A;
+    --blue:           #818CF8;
+    --blue-dim:       #232870;
+    --violet:         #A78BFA;
 
     --font-mono:      'JetBrains Mono', monospace;
-    --font-heading:   'Inter', sans-serif;
+    --font-ui:        'Nunito', sans-serif;
 
-    --radius:         8px;
-    --radius-sm:      4px;
-    --radius-none:    0;
+    --radius:         12px;
+    --radius-sm:      8px;
+    --radius-xs:      5px;
     --spacing-page:   2rem;
 }
 
@@ -85,11 +86,11 @@ a {
    ================================================================ */
 .nav {
     background: var(--bg-nav);
-    border-bottom: 1px solid var(--amber);
+    border-bottom: 1px solid var(--border-strong);
     position: sticky;
     top: 0;
     z-index: 100;
-    height: 48px;
+    height: 52px;
 }
 
 .nav-inner {
@@ -105,11 +106,11 @@ a {
 .nav-left {
     display: flex;
     align-items: center;
-    gap: 2.5rem;
+    gap: 2rem;
 }
 
 .nav-logo {
-    font-family: var(--font-heading);
+    font-family: var(--font-ui);
     font-size: 1.1rem;
     font-weight: 800;
     letter-spacing: 0.15em;
@@ -125,7 +126,7 @@ a {
 }
 
 .nav-link {
-    font-family: var(--font-heading);
+    font-family: var(--font-ui);
     font-size: 0.75rem;
     font-weight: 600;
     letter-spacing: 0.08em;
@@ -154,7 +155,7 @@ a {
 }
 
 .nav-operator {
-    font-family: var(--font-heading);
+    font-family: var(--font-ui);
     font-size: 0.7rem;
     font-weight: 700;
     letter-spacing: 0.2em;
@@ -193,7 +194,7 @@ a {
 }
 
 .page-title {
-    font-family: var(--font-heading);
+    font-family: var(--font-ui);
     font-size: 1.4rem;
     font-weight: 800;
     letter-spacing: 0.12em;
@@ -233,7 +234,7 @@ a {
 }
 
 .stat-label {
-    font-family: var(--font-heading);
+    font-family: var(--font-ui);
     font-size: 0.6rem;
     letter-spacing: 0.18em;
     text-transform: uppercase;
@@ -284,7 +285,7 @@ a {
     color: var(--steel);
     padding: 0.65rem 1.1rem;
     cursor: pointer;
-    font-family: var(--font-heading);
+    font-family: var(--font-ui);
     font-size: 0.72rem;
     font-weight: 700;
     letter-spacing: 0.1em;
@@ -323,7 +324,7 @@ a {
 .table th {
     background: var(--bg-nav);
     color: var(--text-secondary);
-    font-family: var(--font-heading);
+    font-family: var(--font-ui);
     font-size: 0.65rem;
     font-weight: 600;
     letter-spacing: 0.1em;
@@ -375,7 +376,7 @@ a {
 .zone-header {
     background: var(--bg-nav);
     color: var(--steel);
-    font-family: var(--font-heading);
+    font-family: var(--font-ui);
     font-size: 0.62rem;
     letter-spacing: 0.22em;
     text-transform: uppercase;
@@ -407,7 +408,7 @@ a {
 .drop-rank.rank-3 { color: var(--text-secondary); }
 
 .pick-label {
-    font-family: var(--font-heading);
+    font-family: var(--font-ui);
     font-size: 0.72rem;
     font-weight: 700;
     letter-spacing: 0.08em;
@@ -415,7 +416,7 @@ a {
 }
 
 .cell-promoted-yes {
-    font-family: var(--font-heading);
+    font-family: var(--font-ui);
     font-size: 0.68rem;
     font-weight: 700;
     letter-spacing: 0.06em;
@@ -429,7 +430,7 @@ a {
     display: inline-block;
     background: var(--amber);
     color: #080C10;
-    font-family: var(--font-heading);
+    font-family: var(--font-ui);
     font-weight: 700;
     font-size: 0.65rem;
     letter-spacing: 0.06em;
@@ -442,7 +443,7 @@ a {
     display: inline-block;
     border: 1px solid var(--amber);
     color: var(--amber);
-    font-family: var(--font-heading);
+    font-family: var(--font-ui);
     font-weight: 600;
     font-size: 0.65rem;
     letter-spacing: 0.06em;
@@ -455,7 +456,7 @@ a {
     display: inline-block;
     background: var(--border);
     color: var(--steel);
-    font-family: var(--font-heading);
+    font-family: var(--font-ui);
     font-size: 0.65rem;
     letter-spacing: 0.06em;
     padding: 2px 8px;
@@ -467,7 +468,7 @@ a {
     display: inline-block;
     border: 1px solid var(--cyan-dim);
     color: var(--cyan);
-    font-family: var(--font-heading);
+    font-family: var(--font-ui);
     font-size: 0.65rem;
     letter-spacing: 0.06em;
     padding: 2px 8px;
@@ -478,7 +479,7 @@ a {
 .badge-no {
     display: inline-block;
     color: var(--text-muted);
-    font-family: var(--font-heading);
+    font-family: var(--font-ui);
     font-size: 0.65rem;
     letter-spacing: 0.04em;
     padding: 2px 4px;
@@ -518,7 +519,7 @@ a {
     font-size: 0.7rem;
     color: var(--text-dim);
     margin: 0 0.4rem;
-    font-family: var(--font-heading);
+    font-family: var(--font-ui);
     letter-spacing: 0.06em;
     text-transform: uppercase;
 }
@@ -548,7 +549,7 @@ a {
 /* Zone & BTS badges in fixtures */
 .zone-badge,
 .bts-badge {
-    font-family: var(--font-heading);
+    font-family: var(--font-ui);
     font-size: 0.68rem;
     font-weight: 600;
     letter-spacing: 0.06em;
@@ -560,7 +561,7 @@ a {
 
 /* Tier badges */
 .tier-badge {
-    font-family: var(--font-heading);
+    font-family: var(--font-ui);
     font-size: 0.65rem;
     font-weight: 700;
     letter-spacing: 0.1em;
@@ -577,7 +578,7 @@ a {
 
 /* Status badges */
 .badge-status {
-    font-family: var(--font-heading);
+    font-family: var(--font-ui);
     font-size: 0.65rem;
     font-weight: 700;
     letter-spacing: 0.08em;
@@ -662,14 +663,14 @@ a {
 
 /* === Settle button === */
 .action-col { width: 80px; text-align: right; }
-.btn-settle { background: transparent; border: 1px solid var(--border-strong); color: var(--steel); font-family: var(--font-heading); font-size: 0.62rem; font-weight: 700; letter-spacing: 0.1em; padding: 3px 9px; cursor: pointer; transition: border-color 0.15s, color 0.15s; }
+.btn-settle { background: transparent; border: 1px solid var(--border-strong); color: var(--steel); font-family: var(--font-ui); font-size: 0.62rem; font-weight: 700; letter-spacing: 0.1em; padding: 3px 9px; cursor: pointer; transition: border-color 0.15s, color 0.15s; }
 .btn-settle:hover { border-color: var(--amber); color: var(--amber); }
 
 /* === Modal === */
 .modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.75); display: flex; align-items: center; justify-content: center; z-index: 500; }
 .modal { background: var(--bg-card); border: 1px solid var(--border-strong); width: 480px; max-width: 95vw; }
 .modal-header { display: flex; align-items: center; justify-content: space-between; padding: 0.8rem 1rem; border-bottom: 1px solid var(--border); background: var(--bg-nav); }
-.modal-title { font-family: var(--font-heading); font-size: 0.75rem; font-weight: 700; letter-spacing: 0.12em; color: var(--amber); }
+.modal-title { font-family: var(--font-ui); font-size: 0.75rem; font-weight: 700; letter-spacing: 0.12em; color: var(--amber); }
 .modal-close { background: transparent; border: none; color: var(--steel); cursor: pointer; font-size: 0.9rem; padding: 2px 6px; }
 .modal-close:hover { color: var(--text-primary); }
 .modal-body { padding: 1rem; }
@@ -679,15 +680,15 @@ a {
 .form-row { display: flex; gap: 0.75rem; flex-wrap: wrap; margin-bottom: 0.75rem; }
 .form-group { display: flex; flex-direction: column; flex: 1; min-width: 90px; }
 .form-group-wide { min-width: 160px; }
-.form-label { font-family: var(--font-heading); font-size: 0.6rem; letter-spacing: 0.16em; color: var(--steel); margin-bottom: 0.3rem; text-transform: uppercase; }
+.form-label { font-family: var(--font-ui); font-size: 0.6rem; letter-spacing: 0.16em; color: var(--steel); margin-bottom: 0.3rem; text-transform: uppercase; }
 .form-input { background: var(--bg-base); border: 1px solid var(--border-strong); color: var(--text-primary); font-family: var(--font-mono); font-size: 0.82rem; padding: 0.45rem 0.6rem; outline: none; transition: border-color 0.15s; width: 100%; }
 .form-input:focus { border-color: var(--amber); }
-.form-section-label { font-family: var(--font-heading); font-size: 0.62rem; letter-spacing: 0.2em; color: var(--steel); text-transform: uppercase; margin: 0.9rem 0 0.5rem; border-top: 1px solid var(--border); padding-top: 0.7rem; }
+.form-section-label { font-family: var(--font-ui); font-size: 0.62rem; letter-spacing: 0.2em; color: var(--steel); text-transform: uppercase; margin: 0.9rem 0 0.5rem; border-top: 1px solid var(--border); padding-top: 0.7rem; }
 .form-section-optional { font-weight: 400; letter-spacing: 0.05em; color: var(--text-dim); }
 .form-actions { margin-top: 1rem; display: flex; justify-content: flex-end; }
 
 /* === Buttons === */
-.btn-primary { background: var(--amber); color: #0A0B0D; border: none; font-family: var(--font-heading); font-size: 0.72rem; font-weight: 700; letter-spacing: 0.1em; padding: 0.55rem 1.4rem; cursor: pointer; transition: background 0.15s; }
+.btn-primary { background: var(--amber); color: #0A0B0D; border: none; font-family: var(--font-ui); font-size: 0.72rem; font-weight: 700; letter-spacing: 0.1em; padding: 0.55rem 1.4rem; cursor: pointer; transition: background 0.15s; }
 .btn-primary:hover { background: #FBBF24; }
 .btn-primary:disabled { opacity: 0.45; cursor: not-allowed; }
 
@@ -698,29 +699,29 @@ a {
 
 /* === Odds preview strip === */
 .odds-preview { display: flex; align-items: center; gap: 0.6rem; padding: 0.5rem 0.75rem; border: 1px solid var(--amber-dim); background: #0F0F08; margin-top: 0.5rem; }
-.preview-label { font-family: var(--font-heading); font-size: 0.6rem; letter-spacing: 0.18em; color: var(--amber-dim); text-transform: uppercase; margin-right: 0.4rem; }
+.preview-label { font-family: var(--font-ui); font-size: 0.6rem; letter-spacing: 0.18em; color: var(--amber-dim); text-transform: uppercase; margin-right: 0.4rem; }
 
 /* === Ingest layout === */
 .ingest-layout { display: grid; grid-template-columns: 400px 1fr; gap: 1.2rem; margin-top: 0; }
-.ingest-form-card .ingest-form-header, .ingest-queue-card .ingest-form-header { font-family: var(--font-heading); font-size: 0.65rem; font-weight: 700; letter-spacing: 0.2em; color: var(--steel); text-transform: uppercase; padding: 0.6rem 1rem; background: var(--bg-nav); border-bottom: 1px solid var(--border); }
+.ingest-form-card .ingest-form-header, .ingest-queue-card .ingest-form-header { font-family: var(--font-ui); font-size: 0.65rem; font-weight: 700; letter-spacing: 0.2em; color: var(--steel); text-transform: uppercase; padding: 0.6rem 1rem; background: var(--bg-nav); border-bottom: 1px solid var(--border); }
 .ingest-form { padding: 1rem; }
 @media (max-width: 900px) { .ingest-layout { grid-template-columns: 1fr; } }
 
 /* === Inspector zone strip === */
 .insp-zone-card { margin-bottom: 0; }
 .insp-zone-tab-bar { display: flex; border-bottom: 1px solid var(--border); background: var(--bg-nav); padding: 0 1rem; }
-.insp-zone-btn { background: transparent; border: none; border-bottom: 2px solid transparent; color: var(--steel); cursor: pointer; font-family: var(--font-heading); font-size: 0.68rem; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase; padding: 0.55rem 1rem; margin-bottom: -1px; transition: color 0.15s, border-color 0.15s; }
+.insp-zone-btn { background: transparent; border: none; border-bottom: 2px solid transparent; color: var(--steel); cursor: pointer; font-family: var(--font-ui); font-size: 0.68rem; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase; padding: 0.55rem 1rem; margin-bottom: -1px; transition: color 0.15s, border-color 0.15s; }
 .insp-zone-btn:hover { color: var(--text-secondary); }
 .insp-zone-btn.active { color: var(--amber); border-bottom-color: var(--amber); }
 .zone-strip { display: flex; gap: 0; overflow-x: auto; }
 .zs-card { flex: 1; min-width: 160px; padding: 0.85rem 1rem; border-right: 1px solid var(--border); }
 .zs-card:last-child { border-right: none; }
 .zs-muted { opacity: 0.6; }
-.zs-name { font-family: var(--font-heading); font-size: 0.65rem; font-weight: 800; letter-spacing: 0.18em; color: var(--text-secondary); margin-bottom: 0.4rem; }
+.zs-name { font-family: var(--font-ui); font-size: 0.65rem; font-weight: 800; letter-spacing: 0.18em; color: var(--text-secondary); margin-bottom: 0.4rem; }
 .zs-metrics { display: flex; gap: 0.6rem; margin-bottom: 0.4rem; }
 .zs-m { font-size: 0.75rem; font-weight: 500; color: var(--text-primary); }
 .zs-foot { display: flex; align-items: center; gap: 0.6rem; font-size: 0.7rem; }
-.zs-live { font-family: var(--font-heading); font-size: 0.62rem; font-weight: 700; color: var(--amber); letter-spacing: 0.08em; }
+.zs-live { font-family: var(--font-ui); font-size: 0.62rem; font-weight: 700; color: var(--amber); letter-spacing: 0.08em; }
 
 /* === Findings feed === */
 .findings-feed { padding: 0; }
@@ -735,7 +736,7 @@ a {
 .finding-watch .finding-icon { color: var(--steel); }
 .finding-meas  .finding-icon { color: var(--blue); }
 .finding-text { flex: 1; }
-.finding-headline { font-family: var(--font-heading); font-size: 0.78rem; font-weight: 700; letter-spacing: 0.04em; color: var(--text-primary); margin-bottom: 0.2rem; }
+.finding-headline { font-family: var(--font-ui); font-size: 0.78rem; font-weight: 700; letter-spacing: 0.04em; color: var(--text-primary); margin-bottom: 0.2rem; }
 .finding-detail { font-size: 0.75rem; color: var(--text-secondary); }
 .finding-tag { display: flex; align-items: flex-start; padding-top: 2px; }
 
@@ -784,7 +785,7 @@ a {
 }
 
 .fx-team {
-    font-family: var(--font-heading);
+    font-family: var(--font-ui);
     font-size: 0.8rem;
     font-weight: 600;
     color: var(--text-primary);
@@ -796,7 +797,7 @@ a {
     color: var(--text-dim);
     letter-spacing: 0.08em;
     text-transform: uppercase;
-    font-family: var(--font-heading);
+    font-family: var(--font-ui);
     padding: 1px 0;
 }
 
@@ -839,7 +840,7 @@ a {
 }
 
 .csp-title {
-    font-family: var(--font-heading);
+    font-family: var(--font-ui);
     font-size: 0.75rem;
     font-weight: 700;
     letter-spacing: 0.1em;
@@ -875,7 +876,7 @@ a {
 }
 
 .csp-metric-label {
-    font-family: var(--font-heading);
+    font-family: var(--font-ui);
     font-size: 0.58rem;
     letter-spacing: 0.14em;
     color: var(--steel);
@@ -913,7 +914,7 @@ a {
 }
 
 .insp-chart-title {
-    font-family: var(--font-heading);
+    font-family: var(--font-ui);
     font-size: 0.65rem;
     font-weight: 700;
     letter-spacing: 0.18em;
@@ -932,6 +933,169 @@ a {
 .modal-header { border-radius: var(--radius) var(--radius) 0 0; }
 
 /* === Form inputs rounded === */
-.form-input { border-radius: var(--radius-sm); }
-.btn-primary { border-radius: var(--radius-sm); }
-.btn-settle  { border-radius: var(--radius-sm); }
+.form-input { border-radius: var(--radius-xs); }
+.btn-primary { border-radius: var(--radius-xs); }
+.btn-settle  { border-radius: var(--radius-xs); }
+
+/* ================================================================
+   INSPECTOR LENS TABS (pre/post switch)
+   ================================================================ */
+.lens-bar {
+    display: flex;
+    gap: 0.5rem;
+    margin-bottom: 1.25rem;
+}
+
+.lens-btn {
+    background: var(--bg-card);
+    border: 1px solid var(--border-strong);
+    border-radius: var(--radius-sm);
+    color: var(--steel);
+    cursor: pointer;
+    font-family: var(--font-ui);
+    font-size: 0.8rem;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    padding: 0.5rem 1.4rem;
+    transition: all 0.15s;
+}
+
+.lens-btn:hover { color: var(--text-primary); border-color: var(--blue); }
+
+.lens-btn.active {
+    background: var(--blue-dim);
+    border-color: var(--blue);
+    color: var(--blue);
+}
+
+/* ================================================================
+   POST-MATCH PANEL
+   ================================================================ */
+.pm-summary {
+    display: flex;
+    gap: 0.75rem;
+    margin-bottom: 1.25rem;
+    flex-wrap: wrap;
+}
+
+.pm-stat {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    padding: 0.65rem 1.1rem;
+    min-width: 110px;
+    display: flex;
+    flex-direction: column;
+    gap: 0.2rem;
+}
+
+.pm-stat-label {
+    font-family: var(--font-ui);
+    font-size: 0.62rem;
+    font-weight: 700;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    color: var(--steel);
+}
+
+.pm-stat-value {
+    font-family: var(--font-mono);
+    font-size: 1.4rem;
+    font-weight: 600;
+    line-height: 1;
+    color: var(--text-primary);
+}
+
+.pm-stat-value.win  { color: var(--green); }
+.pm-stat-value.loss { color: var(--red); }
+.pm-stat-value.pend { color: var(--amber); }
+.pm-stat-value.rate { color: var(--cyan); }
+
+/* Post-match pick row */
+.pm-pick {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    padding: 0.7rem 1rem;
+    border-bottom: 1px solid var(--border);
+    transition: background 0.1s;
+}
+
+.pm-pick:last-child { border-bottom: none; }
+.pm-pick:hover { background: var(--bg-nav); }
+
+.pm-outcome {
+    flex-shrink: 0;
+    width: 70px;
+    text-align: center;
+}
+
+.pm-outcome-badge {
+    font-family: var(--font-ui);
+    font-size: 0.72rem;
+    font-weight: 800;
+    letter-spacing: 0.06em;
+    padding: 3px 10px;
+    border-radius: var(--radius-xs);
+    display: inline-block;
+}
+
+.pm-win   { background: var(--green-bg); color: var(--green); border: 1px solid var(--green); }
+.pm-loss  { background: var(--red-bg);   color: var(--red);   border: 1px solid var(--red); }
+.pm-pend  { background: transparent;     color: var(--amber); border: 1px solid var(--amber-dim); }
+
+.pm-match { flex: 1; }
+.pm-teams {
+    font-family: var(--font-ui);
+    font-size: 0.85rem;
+    font-weight: 700;
+    color: var(--text-primary);
+    margin-bottom: 0.15rem;
+}
+
+.pm-meta {
+    font-size: 0.72rem;
+    color: var(--text-secondary);
+    display: flex;
+    gap: 0.5rem;
+    flex-wrap: wrap;
+    align-items: center;
+}
+
+.pm-score {
+    font-family: var(--font-mono);
+    font-size: 1rem;
+    font-weight: 600;
+    color: var(--text-primary);
+    min-width: 52px;
+    text-align: center;
+    flex-shrink: 0;
+}
+
+.pm-score.no-score {
+    font-size: 0.72rem;
+    color: var(--text-dim);
+    font-family: var(--font-ui);
+}
+
+.pm-pick-label {
+    font-size: 0.72rem;
+    font-weight: 700;
+    color: var(--violet);
+    font-family: var(--font-ui);
+    min-width: 160px;
+    text-align: right;
+    flex-shrink: 0;
+}
+
+/* ================================================================
+   BADGE UPDATES — rounded
+   ================================================================ */
+.badge-fire  { border-radius: var(--radius-xs); }
+.badge-tol   { border-radius: var(--radius-xs); }
+.badge-hold  { border-radius: var(--radius-xs); }
+.badge-meas  { border-radius: var(--radius-xs); }
+.badge-no    { border-radius: var(--radius-xs); }
+.zone-badge  { border-radius: var(--radius-xs); }
+.bts-badge   { border-radius: var(--radius-xs); }
+.tier-badge  { border-radius: var(--radius-xs); }

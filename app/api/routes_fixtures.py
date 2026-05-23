@@ -192,6 +192,38 @@ async def settle_fixture(fixture_id: int, payload: SettlePayload) -> dict:
             ),
         )
 
+        # Write pick_results for any emit_log rows on this fixture
+        emit_rows = conn.execute(
+            "SELECT pick_uuid, market, pick FROM emit_log WHERE fixture_id = ?",
+            (fixture_id,),
+        ).fetchall()
+        if emit_rows:
+            from app.api.routes_picks import settle_pick
+            # Re-read the odds we just set
+            odds_row = conn.execute(
+                "SELECT home_odd, away_odd FROM fixtures WHERE id = ?", (fixture_id,)
+            ).fetchone()
+            home_o = dict(odds_row).get("home_odd") if odds_row else None
+            away_o = dict(odds_row).get("away_odd") if odds_row else None
+            for er in emit_rows:
+                outcome_val = settle_pick(
+                    er["market"],
+                    payload.home_score, payload.away_score,
+                    home_o, away_o,
+                )
+                if outcome_val is None:
+                    continue
+                outcome_label = ("WIN" if outcome_val == 1.0 else
+                                 "VOID" if outcome_val == 0.5 else "LOSS")
+                conn.execute(
+                    """
+                    INSERT OR REPLACE INTO pick_results
+                      (pick_uuid, settled_at, outcome, actual_value)
+                    VALUES (?, ?, ?, ?)
+                    """,
+                    (er["pick_uuid"], now, outcome_label, outcome_val),
+                )
+
         conn.commit()
 
     finally:

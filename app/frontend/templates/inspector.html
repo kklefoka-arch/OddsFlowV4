@@ -6,11 +6,11 @@
 <div class="page-header">
   <div class="page-header-left">
     <h1 class="page-title">INSPECTOR</h1>
-    <p class="page-subtitle">Live signals · Reactive to every settled result · No hard locks</p>
+    <p class="page-subtitle">Pre-match signals · Post-match results · Reactive to every settled result</p>
   </div>
   <div class="summary-stats">
     <div class="stat-block">
-      <span class="stat-label">SETTLED</span>
+      <span class="stat-label">CALIBRATION</span>
       <span class="stat-value">{{ total_fixtures }}</span>
     </div>
     <div class="stat-block stat-block-accent">
@@ -18,100 +18,207 @@
       <span class="stat-value amber">{{ promoted_count }}</span>
     </div>
     <div class="stat-block">
-      <span class="stat-label">TOTAL CELLS</span>
-      <span class="stat-value stat-value-sm">{{ total_cells }}</span>
+      <span class="stat-label">LAST 7D PICKS</span>
+      <span class="stat-value stat-value-sm">{{ post.wins + post.losses + post.pending }}</span>
     </div>
     <div class="stat-block">
-      <span class="stat-label">AS OF</span>
-      <span class="stat-value stat-value-sm">{{ summary.last_updated[:10] }}</span>
+      <span class="stat-label">HIT RATE</span>
+      <span class="stat-value stat-value-sm {% if post.hit_rate >= 72 %}amber{% endif %}">
+        {% if post.total_settled > 0 %}{{ post.hit_rate }}%{% else %}—{% endif %}
+      </span>
     </div>
   </div>
 </div>
 
-<!-- Zone Overview Strip -->
-<div class="card insp-zone-card">
-  <div class="insp-zone-tab-bar">
-    <button class="insp-zone-btn active" data-zstrip="all">ALL</button>
-    <button class="insp-zone-btn" data-zstrip="t1">T1</button>
-    <button class="insp-zone-btn" data-zstrip="t2t3">T2+T3</button>
-  </div>
-  {% for tier_key, zone_data in [("all", zone_all), ("t1", zone_t1), ("t2t3", zone_t2t3)] %}
-  <div class="zone-strip {% if tier_key != 'all' %}hidden{% endif %}" id="zstrip-{{ tier_key }}">
-    {% for z in zone_data %}
-    <div class="zs-card {% if z.zone == 'low' %}zs-muted{% endif %}">
-      <div class="zs-name">{{ z.zone | replace("_"," ") | upper }}</div>
-      <div class="zs-metrics">
-        <span class="zs-m" title="Goals avg hit %">G&nbsp;{{ z.avg_goals }}%</span>
-        <span class="zs-m" title="Corners avg hit %">C&nbsp;{{ z.avg_corners }}%</span>
-        <span class="zs-m" title="3-Way avg hit %">3W&nbsp;{{ z.avg_3way }}%</span>
-      </div>
-      <div class="zs-foot">
-        <span class="dim">{{ z.n_fixtures }}fx · {{ z.n_cells }} cells</span>
-        {% if z.promoted > 0 %}
-          <span class="zs-live">&#9650; {{ z.promoted }} live</span>
-        {% elif z.zone == 'low' %}
-          <span class="badge-meas" style="font-size:0.6rem;padding:1px 5px">MEAS</span>
-        {% else %}
-          <span class="dim">—</span>
-        {% endif %}
-      </div>
-    </div>
-    {% endfor %}
-  </div>
-  {% endfor %}
+<!-- Lens switcher -->
+<div class="lens-bar">
+  <button class="lens-btn active" data-lens="prematch">PRE-MATCH</button>
+  <button class="lens-btn" data-lens="postmatch">POST-MATCH</button>
 </div>
 
-<!-- Zone hit-rate bar chart -->
-<div class="card" style="margin-top:1rem">
-  <div class="insp-chart-section">
-    <div class="insp-chart-title">Zone Hit Rates — Goals · Corners · 3-Way (%)</div>
-    <div class="insp-chart-wrap">
-      <canvas id="insp-zone-chart"></canvas>
+<!-- ===================================================================
+     PRE-MATCH LENS
+     =================================================================== -->
+<div id="lens-prematch">
+
+  <!-- Zone Overview Strip -->
+  <div class="card insp-zone-card">
+    <div class="insp-zone-tab-bar">
+      <button class="insp-zone-btn active" data-zstrip="all">ALL</button>
+      <button class="insp-zone-btn" data-zstrip="t1">T1</button>
+      <button class="insp-zone-btn" data-zstrip="t2t3">T2+T3</button>
     </div>
-  </div>
-</div>
-
-<!-- Findings Feed -->
-<div class="card" style="margin-top:1.2rem">
-  <div class="tab-bar">
-    <button class="tab-btn active" data-ifeed="all">ALL TIERS</button>
-    <button class="tab-btn" data-ifeed="t1">T1</button>
-    <button class="tab-btn" data-ifeed="t2t3">T2+T3</button>
-  </div>
-
-  {% for tier_key, findings in [("all", findings_all), ("t1", findings_t1), ("t2t3", findings_t2t3)] %}
-  <div class="findings-feed {% if tier_key != 'all' %}hidden{% endif %}" id="ifeed-{{ tier_key }}">
-    {% if findings %}
-      {% for f in findings %}
-      <div class="finding finding-{{ f.type }}">
-        <div class="finding-icon">
-          {% if f.type == 'fire' %}&#9650;{% elif f.type == 'watch' %}&#9654;{% else %}&#9632;{% endif %}
+    {% for tier_key, zone_data in [("all", zone_all), ("t1", zone_t1), ("t2t3", zone_t2t3)] %}
+    <div class="zone-strip {% if tier_key != 'all' %}hidden{% endif %}" id="zstrip-{{ tier_key }}">
+      {% for z in zone_data %}
+      <div class="zs-card {% if z.zone == 'low' %}zs-muted{% endif %}">
+        <div class="zs-name">{{ z.zone | replace("_"," ") | upper }}</div>
+        <div class="zs-metrics">
+          <span class="zs-m" title="Goals avg hit %">G&nbsp;{{ z.avg_goals }}%</span>
+          <span class="zs-m" title="Corners avg hit %">C&nbsp;{{ z.avg_corners }}%</span>
+          <span class="zs-m" title="3-Way avg hit %">3W&nbsp;{{ z.avg_3way }}%</span>
         </div>
-        <div class="finding-text">
-          <div class="finding-headline">{{ f.headline }}</div>
-          <div class="finding-detail">{{ f.body }}</div>
-        </div>
-        <div class="finding-tag">
-          {% if f.type == 'fire' %}<span class="badge-fire">LIVE</span>
-          {% elif f.type == 'watch' %}<span class="badge-hold">WATCH</span>
-          {% elif f.type == 'meas' %}<span class="badge-meas">MEAS</span>
+        <div class="zs-foot">
+          <span class="dim">{{ z.n_fixtures }}fx · {{ z.n_cells }} cells</span>
+          {% if z.promoted > 0 %}
+            <span class="zs-live">&#9650; {{ z.promoted }} live</span>
+          {% elif z.zone == 'low' %}
+            <span class="badge-meas" style="font-size:0.6rem;padding:1px 5px">MEAS</span>
+          {% else %}
+            <span class="dim">—</span>
           {% endif %}
         </div>
       </div>
       {% endfor %}
-    {% else %}
-    <div class="empty-state">
-      <span class="empty-icon">&#9632;</span>
-      <p>No signals for this tier yet. Settle fixtures to build the foundation.</p>
     </div>
+    {% endfor %}
+  </div>
+
+  <!-- Zone hit-rate bar chart -->
+  <div class="card" style="margin-top:1rem">
+    <div class="insp-chart-section">
+      <div class="insp-chart-title">Zone Hit Rates — Goals · Corners · 3-Way (%)</div>
+      <div class="insp-chart-wrap">
+        <canvas id="insp-zone-chart"></canvas>
+      </div>
+    </div>
+  </div>
+
+  <!-- Findings Feed -->
+  <div class="card" style="margin-top:1.2rem">
+    <div class="tab-bar">
+      <button class="tab-btn active" data-ifeed="all">ALL TIERS</button>
+      <button class="tab-btn" data-ifeed="t1">T1</button>
+      <button class="tab-btn" data-ifeed="t2t3">T2+T3</button>
+    </div>
+
+    {% for tier_key, findings in [("all", findings_all), ("t1", findings_t1), ("t2t3", findings_t2t3)] %}
+    <div class="findings-feed {% if tier_key != 'all' %}hidden{% endif %}" id="ifeed-{{ tier_key }}">
+      {% if findings %}
+        {% for f in findings %}
+        <div class="finding finding-{{ f.type }}">
+          <div class="finding-icon">
+            {% if f.type == 'fire' %}&#9650;{% elif f.type == 'watch' %}&#9654;{% else %}&#9632;{% endif %}
+          </div>
+          <div class="finding-text">
+            <div class="finding-headline">{{ f.headline }}</div>
+            <div class="finding-detail">{{ f.body }}</div>
+          </div>
+          <div class="finding-tag">
+            {% if f.type == 'fire' %}<span class="badge-fire">LIVE</span>
+            {% elif f.type == 'watch' %}<span class="badge-hold">WATCH</span>
+            {% elif f.type == 'meas' %}<span class="badge-meas">MEAS</span>
+            {% endif %}
+          </div>
+        </div>
+        {% endfor %}
+      {% else %}
+      <div class="empty-state">
+        <span class="empty-icon">&#9632;</span>
+        <p>No signals for this tier yet.</p>
+      </div>
+      {% endif %}
+    </div>
+    {% endfor %}
+  </div>
+
+  <p class="insp-footnote">
+    &#9632;&nbsp;Recomputed live from all settled calibration fixtures on each load.
+    Low zone accumulates data but does not fire. Upcoming fixtures in live cells are on the Picks page.
+  </p>
+
+</div><!-- /lens-prematch -->
+
+
+<!-- ===================================================================
+     POST-MATCH LENS
+     =================================================================== -->
+<div id="lens-postmatch" class="hidden">
+
+  <!-- Summary stats -->
+  <div class="pm-summary">
+    <div class="pm-stat">
+      <span class="pm-stat-label">Total Picks</span>
+      <span class="pm-stat-value">{{ post.wins + post.losses + post.pending }}</span>
+    </div>
+    <div class="pm-stat">
+      <span class="pm-stat-label">Win</span>
+      <span class="pm-stat-value win">{{ post.wins }}</span>
+    </div>
+    <div class="pm-stat">
+      <span class="pm-stat-label">Loss</span>
+      <span class="pm-stat-value loss">{{ post.losses }}</span>
+    </div>
+    <div class="pm-stat">
+      <span class="pm-stat-label">Pending</span>
+      <span class="pm-stat-value pend">{{ post.pending }}</span>
+    </div>
+    <div class="pm-stat">
+      <span class="pm-stat-label">Hit Rate</span>
+      <span class="pm-stat-value rate">
+        {% if post.total_settled > 0 %}{{ post.hit_rate }}%{% else %}—{% endif %}
+      </span>
+    </div>
+    <div class="pm-stat" style="border-color:var(--border-strong)">
+      <span class="pm-stat-label">Window</span>
+      <span class="pm-stat-value" style="font-size:0.9rem;color:var(--steel)">Last {{ post.days }}d</span>
+    </div>
+  </div>
+
+  <!-- Results feed -->
+  <div class="card">
+    {% if post.picks %}
+      {% for p in post.picks %}
+      <div class="pm-pick">
+
+        <div class="pm-outcome">
+          {% if p.outcome == 'WIN' %}
+            <span class="pm-outcome-badge pm-win">WIN</span>
+          {% elif p.outcome == 'LOSS' %}
+            <span class="pm-outcome-badge pm-loss">LOSS</span>
+          {% else %}
+            <span class="pm-outcome-badge pm-pend">PENDING</span>
+          {% endif %}
+        </div>
+
+        <div class="pm-match">
+          <div class="pm-teams">{{ p.home_team_name }} vs {{ p.away_team_name }}</div>
+          <div class="pm-meta">
+            <span>{{ p.date[:10] }}</span>
+            <span class="tier-badge tier-t{{ p.tier }}">T{{ p.tier }}</span>
+            <span class="zone-badge">{{ p.draw_zone | replace("_"," ") }}</span>
+            <span class="bts-badge">{{ p.bts_pocket | replace("_"," ") }}</span>
+            <span style="color:var(--steel)">{{ p.league_name }}</span>
+          </div>
+        </div>
+
+        <div class="pm-score">
+          {% if p.home_score is not none and p.away_score is not none %}
+            {{ p.home_score }}–{{ p.away_score }}
+          {% else %}
+            <span class="no-score">No result<br>entered</span>
+          {% endif %}
+        </div>
+
+        <div class="pm-pick-label">{{ p.pick_label }}</div>
+
+      </div>
+      {% endfor %}
+    {% else %}
+      <div class="empty-state">
+        <span class="empty-icon">&#9650;</span>
+        <p>No picks found in the last {{ post.days }} days.<br>
+           Picks appear here once a promoted-cell fixture's date has passed.</p>
+      </div>
     {% endif %}
   </div>
-  {% endfor %}
-</div>
 
-<p class="insp-footnote">
-  &#9632;&nbsp;Recomputed live from all settled results on each load.
-  Low zone accumulates data but does not fire.
-  Upcoming fixtures in live cells are flagged — not confirmed until settled.
-</p>
+  <p class="insp-footnote">
+    &#9632;&nbsp;Showing all fixtures from the last {{ post.days }} days that classified into a promoted cell.
+    PENDING = fixture date passed but score not yet entered. Use the SETTLE button on the Fixtures page.
+    WIN/LOSS = DNB (alpha win or draw) for strong/standard · Alpha Win for one_sided.
+  </p>
+
+</div><!-- /lens-postmatch -->
+
 {% endblock %}

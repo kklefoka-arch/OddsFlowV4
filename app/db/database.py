@@ -40,6 +40,11 @@ def _run_migrations(conn: sqlite3.Connection) -> None:
         "ALTER TABLE teams   ADD COLUMN sportmonks_id INTEGER",
         "ALTER TABLE teams   ADD COLUMN short_name    TEXT",
         "ALTER TABLE fixtures ADD COLUMN sportmonks_id INTEGER",
+        # emit_log additions for V4
+        "ALTER TABLE emit_log ADD COLUMN partition_key TEXT",
+        "ALTER TABLE emit_log ADD COLUMN strategy      TEXT",
+        # system_health table (if not in schema.sql)
+        # pick_results outcome column (ensure it exists)
     ]
     for ddl in additive:
         try:
