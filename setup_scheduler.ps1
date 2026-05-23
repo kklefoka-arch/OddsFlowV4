@@ -28,4 +28,4 @@ Register-OddsFlowTask "OddsFlow_FetchResults"  "fetch_results.py"  23 30
 Register-OddsFlowTask "OddsFlow_Settle"        "settle.py"         23 45
 
 Write-Host "`nAll tasks registered. Verify in Task Scheduler (taskschd.msc)."
-Write-Host "Note: times are in local time — adjust if needed to match UTC target."
+Write-Host "Note: times are in local time - adjust if needed to match UTC target."
