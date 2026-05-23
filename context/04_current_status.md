@@ -1,88 +1,50 @@
-# Current Status — OddsFlow (as of 2026-05-23)
+# Current Status — OddsFlow V4
 
 Update this file at the end of every session.
+Last updated: 2026-05-23
 
 ---
 
-## V3 — OddsFlowV3 (Port 8083)
-
-### State: Running ✅
+## State: Running ✅
 
 | Item | Detail |
 |------|--------|
-| URL (local) | http://localhost:8083 |
-| ngrok tunnel | https://steadier-legwarmer-finlike.ngrok-free.dev |
-| DB | `data/oddsflow_v3.db` |
-| Upcoming fixtures | 1,694 (post-fetch 2026-05-23) |
-| Leagues loaded | 30 (all with sportmonks_id set) |
-| GitHub | github.com/kklefoka-arch/OddsFlowV3.git — up to date |
+| Folder | `C:\OddsFlowV4` (renamed from OddsFlowV3 this session) |
+| Port | 8083 (local) |
+| ngrok | https://steadier-legwarmer-finlike.ngrok-free.dev |
+| DB | `data/oddsflow_v4.db` |
+| GitHub | `github.com/kklefoka-arch/OddsFlowV4` (renamed this session) |
+| Picks (7d window) | 182 picks — 168 dnb, 14 alpha_win — all promote class |
+| Upcoming fixtures | 2,404 total; 242 with draw_odd today (Sportmonks: odds 48-72h out) |
 
-### Pages
-| Page | URL |
-|------|-----|
-| Fixtures | http://localhost:8083/fixtures |
-| Foundation Matrix | http://localhost:8083/foundation |
-| Picks | http://localhost:8083/picks |
-| Ingest | http://localhost:8083/ingest |
-| Inspector | http://localhost:8083/inspector |
-| Health | http://localhost:8083/health |
-
-### What's promoted (as of last check)
-- 25 picks in promoted cells
-- standard x16, strong x6, one_sided x3
-- DNB x22, Alpha Win x3
-
----
-
-## V2.2 — OddsFlow2 (Port 8082)
-
-### State: Running ✅
-
-| Item | Detail |
-|------|--------|
-| URL (local) | http://localhost:8082 |
-| Branch | `master` — V2.2 canonical |
-| GitHub | github.com/kklefoka-arch/oddsflow-v2.git — up to date |
-| Tests | 208 passing |
-
-### Extra endpoints V2 has that V3 doesn't yet
-| Endpoint | Purpose |
-|----------|---------|
-| `GET /picks/prx9` | PRX9 premium ranker |
-| `POST /admin/corners/backfill` | Patch settled fixtures missing corner scores |
-| `GET /diagnostics/today_summary` | Engine perf, fixtures settled, emit settled |
-
----
-
-## Pending items (carry to next session)
-
-| Item | Priority | Notes |
-|------|----------|-------|
-| Saudi Arabia Division 1 ID | Medium | Look up in Sportmonks, add to T2 in both `update_leagues.py` and `fetch_upcoming.py` |
-| Run V3 engine testing report | Medium | `python scripts/v3_full_report.py` |
-| Push V2 commits | Low | 15 commits ahead of remote after CLAUDE.md update |
-| V3 `fetch_upcoming.py` daily schedule | Medium | Needs odds closer to match day (48-72h out) |
-| PRX9 layer on V3 | Low | Port from V2 when V3 promotion is stable |
-
----
-
-## How to start both apps
-
+## How to start
 ```powershell
-# V3
-Set-Location C:\OddsFlowV3
-uvicorn app.main:app --port 8083 --reload
-
-# V2
-Set-Location C:\OddsFlow2\engine
-uvicorn app.main:app --port 8082 --reload
+Set-Location C:\OddsFlowV4
+uvicorn app.main:app --host 0.0.0.0 --port 8083 --reload
 ```
 
-## How to refresh fixtures
-
+## How to refresh fixtures (run daily)
 ```powershell
-Set-Location C:\OddsFlowV3
+Set-Location C:\OddsFlowV4
 python fetch_upcoming.py
 ```
 
-Run this daily — Sportmonks publishes pre-match odds 48-72h before kick-off.
+---
+
+## Known issues / pending fixes
+
+| # | Issue | Fix |
+|---|-------|-----|
+| 1 | 18 of 30 leagues missing from `leagues` DB table → blank league_name/country in SPA | `python scripts/update_leagues.py` |
+| 2 | `fetch_upcoming.py` max_pages=10 cap (500 rows/window) may miss distant fixtures | Bump to `max_pages=20` in fetch_upcoming.py |
+| 3 | `/upcoming` tier filter uses `lg.tier` (league JOIN) — broken until issue #1 fixed | Fixed by #1 |
+
+---
+
+## Session log
+
+| Date | Work done |
+|------|-----------|
+| 2026-05-22 | V4 built — V3 backend + V2 SPA merged, 7 tabs live, 25 picks |
+| 2026-05-23 AM | League audit, fetch run (1694 updated), SPA verified, engine report |
+| 2026-05-23 PM | Consolidation — renamed V3→V4 folder+repo, archived retired projects, cleaned 6 GitHub repos, restructured context per workflow doc |

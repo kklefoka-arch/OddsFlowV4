@@ -1,4 +1,4 @@
-"""OddsFlow V3 — Application settings.
+"""OddsFlow V4 — Application settings.
 
 Uses pydantic-settings for environment-variable overrides.
 Set DATABASE_URL, APP_ENV, or LOG_LEVEL via a .env file or shell env.
@@ -10,7 +10,7 @@ from pydantic_settings import BaseSettings
 
 
 class Settings(BaseSettings):
-    DATABASE_URL: str = "sqlite:///./data/oddsflow_v3.db"
+    DATABASE_URL: str = "sqlite:///./data/oddsflow_v4.db"
     APP_ENV: str = "development"
     LOG_LEVEL: str = "INFO"
 

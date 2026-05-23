@@ -117,12 +117,12 @@ Each pick is stored in `emit_log` with a chain hash for integrity.
 
 ---
 
-## V2 vs V3 Differences
+## V4 pick markets
 
-| Aspect | V2.2 | V3 |
-|--------|------|----|
-| Draw zones | 5-zone (sd/sh/ls/hs/os) | 4-zone (strong/standard/low/one_sided) |
-| BTS threshold | 1.60 | 1.50 |
-| Promotion model | Wilson lower bound ≥ 0.60, min 30 fixtures | Hit rate ≥ 72% (clean threshold) |
-| PRX9 layer | Yes — `/picks/prx9` | Not yet |
-| Database | SQLite (engine/data/) | SQLite (data/oddsflow_v3.db) |
+| Zone | Market fired | Logic |
+|------|-------------|-------|
+| `strong` / `standard` | DNB | Alpha Win OR Draw — derived odd from 1X2 |
+| `one_sided` | Alpha Win | Favourite to win outright |
+| `low` | NONE | Suppressed — measuring only |
+
+Goals and corners picks are retired in V4.

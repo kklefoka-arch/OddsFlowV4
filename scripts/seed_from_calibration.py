@@ -12,8 +12,8 @@ from __future__ import annotations
 import sqlite3
 from pathlib import Path
 
-V2_DB = "C:/OddsFlow2/engine/data/v1_calibration_readonly.db"
-V3_DB = "C:/OddsFlowV3/data/oddsflow_v3.db"
+V2_DB = "C:/OddsFlowV4/data/v1_calibration_readonly.db"
+V3_DB = "C:/OddsFlowV4/data/oddsflow_v4.db"
 
 
 def _count(conn: sqlite3.Connection, table: str) -> int:

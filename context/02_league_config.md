@@ -58,6 +58,7 @@ Source: Sportmonks API subscription (updated 2026-05-23).
 
 ## Notes
 
-- **Saudi Arabia Division 1** — ID unknown, add to T2 when confirmed from Sportmonks
 - Tier affects Foundation Matrix splits: `all` / `t1` / `t2t3`
 - `fetch_upcoming.py` uses `ACTIVE_LEAGUES` dict — update it when subscription changes
+- **DB fix needed:** 18 of 30 leagues missing from `leagues` table → run `scripts/update_leagues.py`
+- `fetch_upcoming.py` max_pages=10 per window (500 row cap) — bump to 20 if fixtures go missing

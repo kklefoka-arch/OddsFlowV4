@@ -11,7 +11,7 @@ from pathlib import Path
 if hasattr(sys.stdout, "reconfigure"):
     sys.stdout.reconfigure(encoding="utf-8", errors="replace")
 
-DB_PATH = Path(r"C:\OddsFlow2\engine\data\v1_calibration_readonly.db")
+DB_PATH = Path(r"C:\OddsFlowV4\data\v1_calibration_readonly.db")
 
 # ---------------------------------------------------------------------------
 # Classification (V3 rules — mirrors classify.py)

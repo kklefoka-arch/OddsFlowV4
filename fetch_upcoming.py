@@ -7,7 +7,7 @@ import sqlite3, urllib.request, urllib.parse, json, time
 from datetime import datetime, timezone
 
 TOKEN  = "2AWINN4fYPiQkY2lfHee9TASZubv74uP1RIY4ILY15Mzg4bw5bH2v2SeKGAN"
-DB     = r"C:\OddsFlowV3\data\oddsflow_v3.db"
+DB     = r"C:\OddsFlowV4\data\oddsflow_v4.db"
 
 TODAY     = datetime.now(timezone.utc).strftime("%Y-%m-%d")
 END_DATE  = "2026-12-31"

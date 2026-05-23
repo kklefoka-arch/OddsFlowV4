@@ -10,7 +10,7 @@ Usage:
 
 import sqlite3
 
-DB = r"C:\OddsFlowV3\data\oddsflow_v3.db"
+DB = r"C:\OddsFlowV4\data\oddsflow_v4.db"
 
 # Complete league subscription from API provider.
 # Format: (sportmonks_id, country, name, tier)

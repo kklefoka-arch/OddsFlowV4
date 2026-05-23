@@ -22,7 +22,11 @@ graphify-out/
 
 # Personal / workspace junk
 *.docx
+*.pdf
 bluetooth_content_share.html
+
+# Archives (large zips — stored locally only)
+archive/*.zip
 
 # OS
 .DS_Store

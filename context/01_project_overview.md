@@ -1,57 +1,49 @@
-# OddsFlow — Project Overview
+# OddsFlow V4 — Project Overview
 
-**What it is:** A football betting analytics engine built for personal use.
-It ingests fixtures and odds from Sportmonks, classifies each match into a cell,
-and surfaces picks for cells that have historically performed well.
+**What it is:** Football betting analytics engine for personal use.
+Ingests fixtures + odds from Sportmonks, classifies each match into a (zone × BTS) cell,
+and surfaces picks for cells with strong historical hit rates.
 
-**Who built it:** Katlego (KK) — BTech Systems Engineering.
+**Who:** Katlego (KK) — sole operator. Single-user system.
 
----
-
-## Two versions running simultaneously
-
-| Version | Port | Purpose | Path |
-|---------|------|---------|------|
-| **V3** | 8083 | Clean production engine | `C:\OddsFlowV3` |
-| **V2.2** | 8082 | Reference engine (battle-tested, PRX9 layer) | `C:\OddsFlow2` |
-
-Both run locally. V3 is the future; V2.2 is kept for signal validation.
+**One project. One folder. One repo. One DB.**
 
 ---
 
 ## How it works (plain language)
 
-1. **Data in** — Sportmonks API provides upcoming fixtures with odds (1X2, BTTS, corners, goals)
-2. **Classify** — Each fixture is placed into a "cell" based on:
-   - **Draw zone** — how strong the draw odd is (4 zones: strong / standard / low / one_sided)
-   - **BTS pocket** — which way the BTTS market leans (4 pockets: strong_over / slight_over / slight_under / strong_under)
-3. **Foundation Matrix** — Settled historical fixtures fill a grid. Each cell shows hit rates (how often "over" wins, etc.)
-4. **Promotion** — Cells that hit ≥72% are promoted. Picks for promoted cells are surfaced.
-5. **Pick output** — Fixtures in promoted cells get picks: goals line, corners line, or DNB/Alpha Win
+1. **Data in** — `fetch_upcoming.py` pulls upcoming fixtures with odds from Sportmonks API
+2. **Classify** — Each fixture gets a draw zone (4 options) and a BTS pocket (4 options)
+3. **Stone policy** — 10 promoted cells (locked from historical analysis) determine which fixtures get picks
+4. **Pick output** — DNB for strong/standard zones, Alpha Win for one_sided zone
+5. **Settle** — When a match ends, `/api/fixtures/settle/{id}` records the result
 
 ---
 
-## Data source
+## Key decisions
 
-- **Provider:** Sportmonks (`api.sportmonks.com/v3/football`)
-- **30 leagues** subscribed — 13 T1, 14 T2, 3 T3 (see `02_league_config.md`)
-- **Run `fetch_upcoming.py` daily** — odds are published 48-72h before kick-off
+- **V4 is the only version** — V2.2 and all prior engines are retired and archived
+- **Stone policy** — The 10 promoted cells are locked from 28,425 settled fixtures. They do not change with local DB state.
+- **No goals/corners picks in V4** — Only DNB and Alpha Win markets fire
+- **SQLite, no external services** — Deploy target is Railway; runs locally on port 8083
 
 ---
 
 ## Technology stack
 
-- **Backend:** Python + FastAPI
-- **Database:** SQLite (`data/oddsflow_v3.db`)
-- **Templates:** Jinja2 HTML (operator-facing UI)
-- **No frontend framework** — plain HTML/CSS/JS
-- **Deploy target:** Railway (Procfile + railway.toml present)
+- **Backend:** Python + FastAPI (uvicorn)
+- **Database:** SQLite (`data/oddsflow_v4.db`)
+- **Frontend:** Single-Page App — Jinja2 template + vanilla JS (no framework)
+- **Deploy target:** Railway (Procfile + railway.toml)
+- **Odds source:** Sportmonks API v3
 
 ---
 
-## Status as of 2026-05-23
+## Reference docs in this folder
 
-- V3: 1,694 upcoming fixtures loaded across 30 leagues
-- V3: Picks live in promoted cells (goals, corners, DNB, Alpha Win)
-- V2: 14 commits ahead of remote, all tests passing (208 tests)
-- Both apps running locally — V3 on :8083, V2 on :8082
+| File | Contents |
+|------|----------|
+| `02_league_config.md` | 30 subscribed leagues, tier assignments |
+| `03_engine_rules.md` | Classification logic, promotion thresholds |
+| `04_current_status.md` | Current state, known issues, next steps |
+| `05_architecture.md` | File map, process flow, API route table |

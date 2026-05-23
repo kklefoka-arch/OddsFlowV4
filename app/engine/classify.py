@@ -1,4 +1,4 @@
-"""OddsFlow V3 — Fixture classification.
+"""OddsFlow V4 — Fixture classification.
 
 Maps draw_odd → draw_zone and (btts_yes_odd, btts_no_odd) → bts_pocket.
 """
