@@ -15,11 +15,11 @@
     </div>
     <div class="stat-block">
       <span class="stat-label">SCHEDULED</span>
-      <span class="stat-value">{{ fixtures | selectattr("status", "equalto", "scheduled") | list | length }}</span>
+      <span class="stat-value">{{ fixtures | selectattr("home_score", "none") | list | length }}</span>
     </div>
     <div class="stat-block stat-block-accent">
       <span class="stat-label">SETTLED</span>
-      <span class="stat-value amber">{{ fixtures | selectattr("status", "equalto", "settled") | list | length }}</span>
+      <span class="stat-value amber">{{ fixtures | rejectattr("home_score", "none") | list | length }}</span>
     </div>
   </div>
 </div>
@@ -51,7 +51,7 @@
     </thead>
     <tbody>
       {% for fix in fixtures %}
-      <tr class="fixture-row" data-status="{{ fix.status }}">
+      <tr class="fixture-row" data-status="{{ 'settled' if fix.home_score is not none else 'scheduled' }}">
         <td class="date-col">{{ fix.date[:10] if fix.date else "—" }}</td>
         <td class="fixture-col">
           <span class="team-name">{{ fix.home_team_name if fix.home_team_name else fix.home_team_id }}</span>
@@ -79,21 +79,21 @@
         <td class="num-col odd-cell">{{ "%.2f"|format(fix.draw_odd) if fix.draw_odd else "—" }}</td>
         <td class="num-col odd-cell">{{ "%.2f"|format(fix.away_odd) if fix.away_odd else "—" }}</td>
         <td>
-          {% if fix.status == 'settled' %}
+          {% if fix.home_score is not none %}
             <span class="badge-status badge-settled">SETTLED</span>
           {% else %}
-            <span class="badge-status badge-scheduled">SCHEDULED</span>
+            <span class="badge-status badge-scheduled">UPCOMING</span>
           {% endif %}
         </td>
         <td class="num-col score-col">
-          {% if fix.status == 'settled' %}
+          {% if fix.home_score is not none %}
             <span class="score">{{ fix.home_score }} – {{ fix.away_score }}</span>
           {% else %}
             <span class="dim">—</span>
           {% endif %}
         </td>
         <td class="action-col">
-          {% if fix.status == 'scheduled' %}
+          {% if fix.home_score is none %}
             <button class="btn-settle" data-id="{{ fix.id }}">SETTLE</button>
           {% endif %}
         </td>

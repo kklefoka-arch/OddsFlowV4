@@ -7,8 +7,7 @@ from fastapi.responses import HTMLResponse
 
 from app.db.database import get_conn
 from app.engine.classify import classify_fixture
-from app.engine.foundation import load_foundation
-from app.engine.promotion import compute_foundation
+from app.engine.static_policy import PROMOTED_CELLS
 from app.frontend.jinja import templates
 from app.settings import settings
 
@@ -17,15 +16,8 @@ router = APIRouter()
 
 def _picks_with_signals(conn, limit: int = 100) -> list[dict]:
     """Return upcoming fixtures that land in a promoted cell, enriched with cell signal."""
-    rows = load_foundation(conn)
-    data = compute_foundation(rows)
-
-    # Build promoted cell lookup: (zone, bts_pocket) -> cell dict
-    promoted = {
-        (c["zone"], c["bts_pocket"]): c
-        for c in data["all"]
-        if c["cell_promoted"]
-    }
+    # Stone policy — never recomputed from local DB state.
+    promoted = PROMOTED_CELLS
 
     fixtures = conn.execute(
         """
@@ -37,7 +29,7 @@ def _picks_with_signals(conn, limit: int = 100) -> list[dict]:
         LEFT JOIN teams  ht  ON ht.id  = f.home_team_id
         LEFT JOIN teams  at2 ON at2.id = f.away_team_id
         LEFT JOIN leagues l  ON l.id   = f.league_id
-        WHERE  f.status = 'scheduled'
+        WHERE  f.home_score IS NULL AND f.date >= date('now')
         ORDER  BY f.date ASC
         LIMIT  ?
         """,

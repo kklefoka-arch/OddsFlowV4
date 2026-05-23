@@ -13,3 +13,17 @@ venv/
 dist/
 build/
 .pytest_cache/
+
+# Logs
+*.log
+
+# Graphify outputs
+graphify-out/
+
+# Personal / workspace junk
+*.docx
+bluetooth_content_share.html
+
+# OS
+.DS_Store
+Thumbs.db

@@ -52,7 +52,9 @@ def _upcoming_fixtures(conn: Any) -> list[dict]:
         SELECT f.*, l.name AS league_name, l.country
         FROM fixtures f
         LEFT JOIN leagues l ON l.id = f.league_id
-        WHERE f.status = 'scheduled'
+        WHERE f.home_score IS NULL
+          AND f.date >= date('now')
+          AND f.date <= date('now', '+30 days')
         ORDER BY f.date ASC
         """
     )
@@ -136,7 +138,7 @@ async def settle_fixture(fixture_id: int, payload: SettlePayload) -> dict:
 
         if row is None:
             raise HTTPException(status_code=404, detail="Fixture not found")
-        if dict(row)["status"] == "settled":
+        if dict(row).get("home_score") is not None:
             raise HTTPException(status_code=409, detail="Fixture already settled")
 
         total_goals = payload.home_score + payload.away_score

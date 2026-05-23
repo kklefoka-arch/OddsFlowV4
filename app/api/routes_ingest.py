@@ -66,7 +66,7 @@ def _get_upcoming(conn: Any, limit: int = 50) -> list[dict]:
         LEFT JOIN leagues l   ON l.id  = f.league_id
         LEFT JOIN teams ht    ON ht.id = f.home_team_id
         LEFT JOIN teams at2   ON at2.id = f.away_team_id
-        WHERE f.status = 'scheduled'
+        WHERE f.home_score IS NULL AND f.date >= date('now')
         ORDER BY f.date ASC
         LIMIT ?
         """,
