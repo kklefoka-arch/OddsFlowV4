@@ -15,16 +15,17 @@ Markets: DNB (strong/standard zones) or Alpha Win (one_sided zone). No goals/cor
 
 ## Current phase
 
-**Production — V3 engine live.** Picks fire from live `compute_foundation()` (not stone policy).
-170 picks in 3-day window (157 dnb, 13 alpha_win). 10 cells promoted, hit rates 69–88%.
-DB: 32,993 fixtures (28,477 settled, 4,391 upcoming). All 7 SPA tabs verified.
-Session 2026-05-23 SESSION 4: Engine wired, Analysis tab rebuilt, OddsFlow2 deleted, 6-agent audit passed.
+**Production — V3 engine live, zero-based test passed.** Picks from live `compute_foundation()`.
+162 picks in 3-day window (151 dnb, 11 alpha_win). 10 cells promoted, hit rates 69–88%.
+DB: 32,993 fixtures (28,477 settled, 4,391 upcoming). All 7 SPA tabs + 11 endpoints return 200.
+Session 5: Zero-based 6-phase test, 4 bugs fixed (date filter, live foundation, promoted_cells count, settle.py).
 
 ## Key files
 
 | File | Purpose |
 |------|---------|
 | `fetch_upcoming.py` | Run daily — refresh pre-match odds + full kickoff datetimes from Sportmonks |
+| `settle.py` | Run after matches complete — writes settled picks to pick_results table |
 | `app/engine/promotion.py` | `compute_foundation()` + PROMOTE/PROMOTE_TOLERANCE constants — live engine |
 | `app/engine/foundation.py` | `load_foundation(conn)` — settled fixture loader |
 | `app/engine/classify.py` | `zone_of()` + `bts_of()` — fixture classification |
@@ -44,8 +45,8 @@ Session 2026-05-23 SESSION 4: Engine wired, Analysis tab rebuilt, OddsFlow2 dele
 
 ## Next steps
 
-1. Run `python fetch_upcoming.py` daily — also backfills kickoff datetimes on existing rows
-2. Monitor Reports tab — pick_results will populate as upcoming fixtures settle
+1. Run `python fetch_upcoming.py` daily — refreshes odds + kickoff datetimes
+2. Run `python settle.py` after matches complete — writes pick_results (enables Inspector calendar)
 3. Consider bumping fetch windows for July–Oct (hitting 1,000-fixture cap)
 
 ## Reference documents

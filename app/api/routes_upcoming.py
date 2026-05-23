@@ -9,7 +9,8 @@ from fastapi import APIRouter, Query
 
 from app.db.database import get_conn
 from app.engine.classify import classify_fixture
-from app.engine.static_policy import PROMOTED_CELLS
+from app.engine.foundation import load_foundation
+from app.engine.promotion import compute_foundation, PROMOTE, PROMOTE_TOLERANCE
 from app.settings import settings
 
 router = APIRouter(tags=["upcoming"])
@@ -44,6 +45,15 @@ def upcoming(
 
     conn = get_conn(settings.sqlite_path)
     try:
+        foundation_rows = load_foundation(conn)
+        foundation = compute_foundation(foundation_rows)
+        promoted_keys: set[tuple[str, str]] = {
+            (cell["zone"], cell["bts_pocket"])
+            for cell in foundation["all"]
+            if cell["threeway_promote"] in (PROMOTE, PROMOTE_TOLERANCE)
+            and cell["zone"] != "low"
+        }
+
         rows = conn.execute(
             f"""
             SELECT f.id, f.date, f.tier,
@@ -58,7 +68,7 @@ def upcoming(
             LEFT JOIN leagues lg ON lg.id = f.league_id
             WHERE f.home_score IS NULL
               AND f.date >= ?
-              AND f.date <= ?
+              AND substr(f.date, 1, 10) <= ?
               {tier_clause}
             ORDER BY f.date ASC
             """,
@@ -76,7 +86,7 @@ def upcoming(
         clf = classify_fixture(d)
         zone = clf.get("zone")
         bts = clf.get("bts_pocket")
-        partition_promoted = bool(zone and bts and PROMOTED_CELLS.get((zone, bts)))
+        partition_promoted = bool(zone and bts and (zone, bts) in promoted_keys)
 
         tier_key = str(d.get("league_tier") or d.get("tier") or "")
         if tier_key:

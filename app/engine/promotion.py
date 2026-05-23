@@ -307,7 +307,10 @@ def compute_foundation(rows: list[dict]) -> dict[str, Any]:
     cells_t1 = _assign_ranks_and_promotion(_compute_cells(t1_rows))
     cells_t2t3 = _assign_ranks_and_promotion(_compute_cells(t2t3_rows))
 
-    promoted_count = sum(1 for c in cells_all if c["cell_promoted"])
+    promoted_count = sum(
+        1 for c in cells_all
+        if c["threeway_promote"] in ("PROMOTE", "PROMOTE_TOLERANCE") and c["zone"] != "low"
+    )
 
     return {
         "all": cells_all,

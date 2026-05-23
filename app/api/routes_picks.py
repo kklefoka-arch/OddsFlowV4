@@ -195,7 +195,7 @@ def picks(days: int = Query(3, ge=1, le=14)) -> dict[str, Any]:
             LEFT JOIN leagues lg ON lg.id = f.league_id
             WHERE f.home_score IS NULL
               AND f.date >= ?
-              AND f.date <= ?
+              AND substr(f.date, 1, 10) <= ?
             ORDER BY f.date ASC
             """,
             (today, horizon),
