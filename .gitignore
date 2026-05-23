@@ -15,6 +15,7 @@ build/
 .pytest_cache/
 
 # Logs
+logs/*.log
 *.log
 
 # Graphify outputs

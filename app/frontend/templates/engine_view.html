@@ -28,6 +28,7 @@
   <button class="tab" data-tab="analysis">Analysis</button>
   <button class="tab" data-tab="inspector">Inspector</button>
   <button class="tab" data-tab="reports">Reports</button>
+  <button class="tab" data-tab="results">Results</button>
   <button class="tab" data-tab="today">Today</button>
   <button class="tab" data-tab="stats">Stats</button>
 </nav>
@@ -153,6 +154,27 @@
     <h3 class="section-h">Recent fixtures — per-pick readback</h3>
     <div id="reports-emit-recent-summary" class="summary"></div>
     <div id="reports-emit-recent-list" class="cards"></div>
+  </section>
+
+  <!-- ============ RESULTS ============ -->
+  <section id="results" class="panel">
+    <div class="panel-header">
+      <h2>Results</h2>
+      <div class="controls">
+        <label>Days: <input type="number" id="results-days" value="7" min="1" max="90"></label>
+        <button id="results-refresh">Refresh</button>
+        <button id="results-livescores-btn" class="btn-secondary">Live Scores</button>
+        <span id="results-live-badge" class="chip" style="display:none">Live</span>
+      </div>
+    </div>
+    <p class="muted">Settled fixtures from the DB. Live badge appears when in-play matches are active.</p>
+    <div id="results-summary" class="summary"></div>
+    <div id="results-livescores-wrap" style="display:none">
+      <h3 class="section-h">In-Play <span id="results-live-count" class="muted"></span></h3>
+      <div id="results-livescores-list"></div>
+    </div>
+    <h3 class="section-h">Recent results</h3>
+    <div id="results-list"></div>
   </section>
 
   <!-- ============ TODAY ============ -->

@@ -232,6 +232,10 @@ for week_start in sorted(by_week):
 
     time.sleep(0.5)
 
+conn.execute(
+    "INSERT INTO system_health (metric, value) VALUES (?, ?)",
+    ("fetch_results", f"ok: {updated} scores, {inserted_stats} stats"),
+)
 conn.commit()
 conn.close()
 

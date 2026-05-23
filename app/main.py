@@ -23,6 +23,7 @@ from app.api.routes_upcoming import router as upcoming_router
 from app.api.routes_reports import router as reports_router
 from app.api.routes_inspector import router as inspector_router
 from app.api.routes_diagnostics import router as diagnostics_router
+from app.api.routes_results import router as results_router
 
 logging.basicConfig(level=settings.LOG_LEVEL)
 logger = logging.getLogger(__name__)
@@ -55,6 +56,7 @@ app.include_router(ingest_router)
 app.include_router(reports_router)
 app.include_router(inspector_router)
 app.include_router(diagnostics_router)
+app.include_router(results_router)
 
 
 # ---- /healthz/deep (wired separately so the SPA health badge works) ----

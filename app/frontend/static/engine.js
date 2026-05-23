@@ -994,7 +994,13 @@ function openInspector(picks) {
       </div>
       <div class="inspector-markets">${marketBlocks}</div>
     </div>
+    <h3 class="section-h">Similar historical fixtures <span class="muted" id="inspector-similar-cell"></span></h3>
+    <div id="inspector-similar-list"><div class="muted">Loading similar-odds history…</div></div>
   `;
+  if (p0.partition_key) {
+    const [zone, bts] = p0.partition_key.split(':');
+    if (zone && bts) loadInspectorSimilar(zone, bts);
+  }
 }
 
 // ---- Upcoming fixtures ----
@@ -1066,6 +1072,165 @@ function renderUpcomingCard(r) {
       </div>
     </div>
   `;
+}
+
+// ---- Results + Livescores ----
+let _liveInterval = null;
+
+async function loadResults() {
+  const days    = document.getElementById('results-days').value || 7;
+  const summary = document.getElementById('results-summary');
+  const list    = document.getElementById('results-list');
+  summary.innerHTML = '<div class="muted">Loading…</div>';
+  list.innerHTML    = '';
+  try {
+    const r    = await fetch(`/api/results?days=${days}`);
+    const body = await r.json();
+    summary.innerHTML = `
+      <div class="summary-item">
+        <span class="summary-label">Settled fixtures</span>
+        <span class="summary-value">${fmt.num(body.count)}</span>
+      </div>
+      <div class="summary-item">
+        <span class="summary-label">Window</span>
+        <span class="summary-value">${body.window_days}d</span>
+      </div>
+    `;
+    if (!body.fixtures || body.fixtures.length === 0) {
+      list.innerHTML = '<div class="empty">No settled fixtures in this window. Run fetch_results.py after match days.</div>';
+      return;
+    }
+    list.innerHTML = body.fixtures.map(fx => renderResultCard(fx)).join('');
+  } catch (e) {
+    summary.innerHTML = `<div class="empty">Error: ${e}</div>`;
+  }
+}
+
+function renderResultCard(fx) {
+  const dateStr  = (fx.date || '').slice(0, 10);
+  const tierBadge = fx.tier
+    ? `<span class="chip chip-tier chip-tier-${fx.tier}">T${fx.tier}</span>` : '';
+  const score   = `${fx.home_score} — ${fx.away_score}`;
+  const goals   = fx.total_goals != null ? `${fx.total_goals}g` : '';
+  const corners = (fx.home_corners != null && fx.away_corners != null)
+    ? `${fx.home_corners}/${fx.away_corners}c` : '';
+  const cell = (fx.draw_zone && fx.bts_pocket)
+    ? `<span class="chip">${fx.draw_zone}</span><span class="chip">${fx.bts_pocket}</span>` : '';
+
+  const pickRows = (fx.picks || []).map(p => {
+    const outCls = p.outcome === 'WIN'  ? 'outcome-win'
+                : p.outcome === 'LOSS' ? 'outcome-loss'
+                : p.outcome === 'VOID' ? 'outcome-void'
+                : 'outcome-pending';
+    return `
+      <div class="settled-pick-row">
+        <span class="settled-market">${marketLabel(p.market)}</span>
+        <span class="settled-pick">${p.pick}</span>
+        <span class="settled-price">@ ${fmt.odd(p.pick_odd)}</span>
+        <span class="settled-outcome ${outCls}">${p.outcome || 'PENDING'}</span>
+      </div>`;
+  }).join('');
+
+  return `
+    <div class="card settled-card">
+      <div class="card-header">
+        <span>${fx.league || '—'}${fx.country ? ` · ${fx.country}` : ''} ${tierBadge}</span>
+        <span class="muted">${dateStr}</span>
+      </div>
+      <div class="card-fixture">${fx.home_team || '?'} vs ${fx.away_team || '?'}</div>
+      <div class="settled-result-line">
+        <span class="settled-score">${score}</span>
+        ${goals   ? `<span class="muted">· ${goals}</span>` : ''}
+        ${corners ? `<span class="muted">· ${corners}</span>` : ''}
+        ${cell}
+      </div>
+      ${pickRows ? `<div class="settled-picks">${pickRows}</div>` : ''}
+    </div>`;
+}
+
+async function loadLivescores() {
+  const wrap  = document.getElementById('results-livescores-wrap');
+  const list  = document.getElementById('results-livescores-list');
+  const badge = document.getElementById('results-live-badge');
+  const count = document.getElementById('results-live-count');
+  try {
+    const r    = await fetch('/api/livescores');
+    const body = await r.json();
+    if (body.error || !body.fixtures || body.fixtures.length === 0) {
+      wrap.style.display  = 'none';
+      badge.style.display = 'none';
+      return;
+    }
+    wrap.style.display  = '';
+    badge.style.display = '';
+    count.textContent   = `(${body.fixtures.length} in play)`;
+    list.innerHTML = body.fixtures.map(fx => `
+      <div class="card live-card">
+        <div class="card-header">
+          <span>${fx.home_team || '?'} vs ${fx.away_team || '?'}</span>
+          <span class="chip ${fx.status === 'FT' ? 'chip-positive' : 'chip-emerging'}">
+            ${fx.status || '—'}${fx.minute ? ` ${fx.minute}'` : ''}
+          </span>
+        </div>
+        <div class="settled-score">${fx.home_score ?? '—'} — ${fx.away_score ?? '—'}</div>
+      </div>`).join('');
+    if (body.auto_written > 0) loadResults();
+  } catch (_) { /* best-effort */ }
+}
+
+function startLivePolling() {
+  if (_liveInterval) return;
+  loadLivescores();
+  _liveInterval = setInterval(loadLivescores, 60000);
+}
+
+function stopLivePolling() {
+  if (_liveInterval) { clearInterval(_liveInterval); _liveInterval = null; }
+}
+
+// ---- Inspector similar-odds ----
+async function loadInspectorSimilar(zone, bts) {
+  const el = document.getElementById('inspector-similar-list');
+  const cellEl = document.getElementById('inspector-similar-cell');
+  if (!el) return;
+  if (cellEl) cellEl.textContent = `${zone} · ${bts}`;
+  try {
+    const r    = await fetch(`/inspector/similar?zone=${encodeURIComponent(zone)}&bts=${encodeURIComponent(bts)}&limit=30`);
+    const body = await r.json();
+    if (body.error || !body.fixtures || body.fixtures.length === 0) {
+      el.innerHTML = '<div class="muted">No historical data for this cell yet (draw_zone migration may not have run).</div>';
+      return;
+    }
+    const hitLine = body.threeway_hit != null
+      ? `<span class="chip chip-premium">${body.threeway_hit}% threeway hit · n=${body.sample_n}</span>` : '';
+    const pick   = body.threeway_pick || '—';
+    el.innerHTML = `
+      <div style="margin-bottom:8px">${hitLine} <span class="chip muted">${pick}</span></div>
+      <table>
+        <thead><tr>
+          <th>Date</th><th>Fixture</th><th>Score</th><th>Result</th><th>Pick</th>
+        </tr></thead>
+        <tbody>
+        ${body.fixtures.map(fx => {
+          const green = fx.tw_green;
+          const resCls = green ? 'positive' : 'negative';
+          const resLabel = green ? 'GREEN' : 'red';
+          const pOut = (fx.picks || []).map(p =>
+            `<span class="settled-outcome ${p.outcome === 'WIN' ? 'outcome-win' : p.outcome === 'LOSS' ? 'outcome-loss' : p.outcome === 'VOID' ? 'outcome-void' : 'outcome-pending'}">${p.outcome || 'no pick'}</span>`
+          ).join(' ');
+          return `<tr>
+            <td class="muted">${(fx.date || '').slice(0, 10)}</td>
+            <td>${fx.home_team} vs ${fx.away_team}</td>
+            <td><strong>${fx.home_score} — ${fx.away_score}</strong></td>
+            <td class="${resCls}">${resLabel}</td>
+            <td>${pOut || '<span class="muted">—</span>'}</td>
+          </tr>`;
+        }).join('')}
+        </tbody>
+      </table>`;
+  } catch (e) {
+    el.innerHTML = `<div class="empty">Error: ${e}</div>`;
+  }
 }
 
 async function loadInspectorDrift(days) {
@@ -1141,13 +1306,15 @@ async function loadInspectorDrift(days) {
 
 // ---- Tab loader dispatch ----
 function loadTab(name) {
-  if (name === 'today')     loadToday();
-  else if (name === 'picks')    loadPicks();
-  else if (name === 'upcoming') loadUpcoming();
-  else if (name === 'analysis') loadAnalysis();
+  if (name !== 'results') stopLivePolling();
+  if (name === 'today')      loadToday();
+  else if (name === 'picks')     loadPicks();
+  else if (name === 'upcoming')  loadUpcoming();
+  else if (name === 'analysis')  loadAnalysis();
   else if (name === 'inspector') loadInspector();
-  else if (name === 'reports')  loadReports();
-  else if (name === 'stats')    loadStats();
+  else if (name === 'reports')   loadReports();
+  else if (name === 'stats')     loadStats();
+  else if (name === 'results') { loadResults(); startLivePolling(); }
 }
 
 // ---- Wire up buttons ----
@@ -1175,6 +1342,9 @@ document.getElementById('inspector-days').addEventListener('change', loadInspect
 document.getElementById('reports-refresh').addEventListener('click', loadReports);
 document.getElementById('reports-days').addEventListener('change', loadReports);
 document.getElementById('reports-tier').addEventListener('change', loadReports);
+document.getElementById('results-refresh').addEventListener('click', loadResults);
+document.getElementById('results-days').addEventListener('change', loadResults);
+document.getElementById('results-livescores-btn').addEventListener('click', loadLivescores);
 
 // ---- Boot: V4 default tab is Picks ----
 refreshHealth();

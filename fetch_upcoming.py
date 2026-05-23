@@ -186,6 +186,23 @@ for fx in fixtures:
 
     home_odd, draw_odd, away_odd, btts_yes, btts_no = extract_odds(fx.get("odds", []))
 
+    # Classify zone + bts_pocket inline for storage
+    def _zone(d):
+        if d is None: return None
+        if d < 2.70: return None
+        if d < 3.40: return "strong"
+        if d < 4.10: return "standard"
+        if d < 4.80: return "low"
+        return "one_sided"
+
+    def _bts(y, n):
+        if y is None or n is None: return None
+        return ("strong_over" if y < 1.50 else "slight_over") if y <= n \
+            else ("strong_under" if n < 1.50 else "slight_under")
+
+    fx_zone = _zone(draw_odd)
+    fx_bts  = _bts(btts_yes, btts_no)
+
     existing = conn.execute(
         "SELECT id FROM fixtures WHERE sportmonks_id=?", (sm_id,)
     ).fetchone()
@@ -194,9 +211,10 @@ for fx in fixtures:
         conn.execute("""
             UPDATE fixtures SET
                 league_id=?, date=?, home_odd=?, draw_odd=?, away_odd=?,
-                btts_yes_odd=?, btts_no_odd=?, updated_at=?
+                btts_yes_odd=?, btts_no_odd=?, draw_zone=?, bts_pocket=?, updated_at=?
             WHERE sportmonks_id=?
-        """, (internal_league_id, kickoff_utc, home_odd, draw_odd, away_odd, btts_yes, btts_no, now_ts, sm_id))
+        """, (internal_league_id, kickoff_utc, home_odd, draw_odd, away_odd,
+              btts_yes, btts_no, fx_zone, fx_bts, now_ts, sm_id))
         updated += 1
     else:
         conn.execute("""
@@ -204,17 +222,20 @@ for fx in fixtures:
                 (sportmonks_id, league_id, tier, date, status,
                  home_team_id, away_team_id, home_team_name, away_team_name,
                  home_odd, draw_odd, away_odd, btts_yes_odd, btts_no_odd,
-                 created_at, updated_at)
-            VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+                 draw_zone, bts_pocket, created_at, updated_at)
+            VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
         """, (
             sm_id, internal_league_id, tier, kickoff_utc, "scheduled",
             ht["id"], at["id"],
             home_team.get("name"), away_team.get("name"),
             home_odd, draw_odd, away_odd, btts_yes, btts_no,
-            now_ts, now_ts,
+            fx_zone, fx_bts, now_ts, now_ts,
         ))
         inserted += 1
 
+conn.execute(
+    "INSERT INTO system_health (metric, value) VALUES ('fetch_upcoming', 'ok')",
+)
 conn.commit()
 conn.close()
 print(f"\nDone — inserted={inserted}  updated={updated}  skipped={skipped}")

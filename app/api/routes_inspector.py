@@ -10,6 +10,7 @@ from fastapi import APIRouter, Query
 
 from app.api.routes_picks import settle_pick
 from app.db.database import get_conn
+from app.engine.classify import zone_of, bts_of
 from app.engine.static_policy import PROMOTED_CELLS
 from app.settings import settings
 
@@ -205,6 +206,94 @@ def recent_settled(
             "losses":    sum(fx["totals"]["losses"]     for fx in fixtures),
         },
         "fixtures": fixtures,
+    }
+
+
+@router.get("/similar")
+def similar(
+    zone: str | None = Query(None),
+    bts: str | None = Query(None),
+    fixture_id: int | None = Query(None),
+    limit: int = Query(50, ge=5, le=200),
+) -> dict[str, Any]:
+    """Historical settled fixtures in the same (zone, bts_pocket) cell. Pre-match context."""
+    conn = get_conn(settings.sqlite_path)
+    try:
+        if fixture_id is not None:
+            fx = conn.execute(
+                "SELECT draw_odd, btts_yes_odd, btts_no_odd FROM fixtures WHERE id=?",
+                (fixture_id,),
+            ).fetchone()
+            if fx:
+                zone = zone_of(fx["draw_odd"])
+                bts  = bts_of(fx["btts_yes_odd"], fx["btts_no_odd"])
+
+        if not zone or not bts:
+            return {"error": "zone and bts required (or a valid fixture_id)", "fixtures": []}
+
+        rows = conn.execute("""
+            SELECT f.id, f.date, f.home_team_name, f.away_team_name,
+                   f.home_score, f.away_score, f.home_odd, f.away_odd, f.draw_odd,
+                   lg.name AS league_name,
+                   em.pick_uuid, em.market, em.pick, pr.outcome
+            FROM fixtures f
+            LEFT JOIN leagues lg      ON lg.id = f.league_id
+            LEFT JOIN emit_log em     ON em.fixture_id = f.id
+            LEFT JOIN pick_results pr ON pr.pick_uuid = em.pick_uuid
+            WHERE f.home_score IS NOT NULL
+              AND f.draw_zone  = ?
+              AND f.bts_pocket = ?
+            ORDER BY f.date DESC
+            LIMIT ?
+        """, (zone, bts, limit)).fetchall()
+    finally:
+        conn.close()
+
+    # Compute inline threeway green per row for quick hit rate
+    green = total = 0
+    fx_map: dict[int, dict] = {}
+    for r in rows:
+        fid = r["id"]
+        hs  = r["home_score"]
+        aws = r["away_score"]
+        h_odd = r["home_odd"]
+        a_odd = r["away_odd"]
+        alpha_home = (h_odd <= a_odd) if (h_odd and a_odd) else True
+        alpha_wins = (hs > aws) if alpha_home else (aws > hs)
+        draw = (hs == aws)
+        tw_green = (alpha_wins or draw) if zone in ("strong", "standard") else alpha_wins
+
+        if fid not in fx_map:
+            total += 1
+            if tw_green:
+                green += 1
+            fx_map[fid] = {
+                "fixture_id":   fid,
+                "date":         r["date"],
+                "home_team":    r["home_team_name"],
+                "away_team":    r["away_team_name"],
+                "home_score":   hs,
+                "away_score":   aws,
+                "league":       r["league_name"],
+                "tw_green":     tw_green,
+                "picks":        [],
+            }
+        if r["pick_uuid"]:
+            fx_map[fid]["picks"].append({
+                "pick_uuid": r["pick_uuid"],
+                "market":    r["market"],
+                "pick":      r["pick"],
+                "outcome":   r["outcome"],
+            })
+
+    hit_rate = round(green / total * 100, 1) if total else None
+    return {
+        "zone":          zone,
+        "bts_pocket":    bts,
+        "threeway_pick": "DNB (Alpha Win or Draw)" if zone in ("strong", "standard") else "Alpha Win",
+        "sample_n":      total,
+        "threeway_hit":  hit_rate,
+        "fixtures":      list(fx_map.values()),
     }
 
 

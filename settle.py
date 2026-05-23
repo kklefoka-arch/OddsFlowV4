@@ -54,6 +54,10 @@ for r in rows:
     """, (r["pick_uuid"], now_ts, lbl, outcome))
     settled += 1
 
+conn.execute(
+    "INSERT INTO system_health (metric, value) VALUES (?, ?)",
+    ("settle", f"ok: {settled} settled, {skipped} skipped"),
+)
 conn.commit()
 conn.close()
 print(f"Done — settled={settled}  skipped={skipped}")
