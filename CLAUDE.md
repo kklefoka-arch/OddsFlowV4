@@ -1,7 +1,8 @@
 # OddsFlow V3 — Project orientation
 
 Read this file at the start of every session. It is the single source of truth for V3.
-**Update this file at the end of every session, then commit and push.**
+**Update this file at the start, during, and at the end of every session, then commit and push.**
+Human-readable context docs are in `context/` — update `context/04_current_status.md` each session.
 
 ---
 

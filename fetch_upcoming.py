@@ -12,8 +12,42 @@ DB     = r"C:\OddsFlowV3\data\oddsflow_v3.db"
 TODAY     = datetime.now(timezone.utc).strftime("%Y-%m-%d")
 END_DATE  = "2026-12-31"
 
-# Active leagues and their tiers
-ACTIVE_LEAGUES = {8: 1, 779: 1, 360: 1}
+# All 30 subscribed leagues — sportmonks_id: tier
+ACTIVE_LEAGUES = {
+    # T1
+    8:    1,   # England — Premier League
+    301:  1,   # France — Ligue 1
+    564:  1,   # Spain — La Liga
+    384:  1,   # Italy — Serie A
+    573:  1,   # Sweden — Allsvenskan
+    444:  1,   # Norway — Eliteserien
+    345:  1,   # Iceland — Besta deild
+    292:  1,   # Finland — Veikkausliiga
+    360:  1,   # Republic of Ireland — Premier Division
+    779:  1,   # United States — Major League Soccer
+    648:  1,   # Brazil — Serie A
+    3537: 1,   # Japan — J1 100 Year Vision League
+    1034: 1,   # South Korea — K League 1
+    # T2
+    567:  2,   # Spain — La Liga 2
+    579:  2,   # Sweden — Superettan
+    585:  2,   # Sweden — Ettan: North
+    588:  2,   # Sweden — Ettan: South
+    681:  2,   # Colombia — Copa Colombia
+    678:  2,   # Colombia — Primera B
+    696:  2,   # Ecuador — Liga Pro
+    1689: 2,   # Canada — Premier League
+    295:  2,   # Finland — Ykköseliga
+    286:  2,   # Estonia — Meistriliiga
+    289:  2,   # Estonia — Esiliiga A
+    791:  2,   # United States — USL Championship
+    3550: 2,   # Japan — J2/J3 100 Year Vision League
+    989:  2,   # China — Super League
+    # T3
+    1607: 3,   # United States — USL League One
+    2545: 3,   # United States — MLS Next Pro
+    1098: 3,   # Bolivia — Liga De Futbol Prof
+}
 
 BASE = "https://api.sportmonks.com/v3/football"
 
