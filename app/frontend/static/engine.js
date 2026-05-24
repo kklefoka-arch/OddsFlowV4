@@ -411,7 +411,7 @@ function renderMarketRow(market, picks) {
     const derivedFlag = p.pick_odd_derived
       ? '<span class="leg-derived" title="DNB derived from 1X2 — not a quoted bookmaker price">derived</span>'
       : '';
-    const hitTag = p.market === 'goals_nl' && p.cell_historical_hit != null
+    const hitTag = (p.market === 'goals_nl' || p.market === 'alpha_win') && p.cell_historical_hit != null
       ? `<span class="leg-tag leg-hit">${p.cell_historical_hit}% hit · n=${(p.cell_historical_n||0).toLocaleString()}</span>`
       : '';
     return `
