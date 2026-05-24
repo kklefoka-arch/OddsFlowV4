@@ -325,6 +325,10 @@ td.numeric { text-align: right; font-family: 'JetBrains Mono', monospace; }
   border: 1px solid var(--line);
   border-radius: 8px;
 }
+.leg-hit {
+  color: var(--positive);
+  border-color: var(--positive);
+}
 .leg-derived {
   font-size: 10px;
   color: #d7a543;
