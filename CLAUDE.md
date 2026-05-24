@@ -19,7 +19,7 @@ Markets: DNB (strong/standard zones) or Alpha Win (one_sided zone). No goals/cor
 **Production — 3 markets live: DNB, Alpha Win, Goals NL.** Picks from live `compute_foundation()`.
 164 picks in 3-day window (79 dnb, 76 goals_nl, 9 alpha_win). 10 threeway cells + 6 goals cells promoted.
 DB: 31,644 fixtures (28,607 settled, 3,037 upcoming). All 8 SPA tabs + 11 endpoints return 200.
-Session 7: Goals NL emission added. start_server.ps1 created. Hit rate tags on all pick card market rows.
+Session 8: Goals odds fetched from Sportmonks (market_id=7). 94/107 goals_nl picks now show pick_odd.
 
 ## Key files
 
@@ -54,8 +54,8 @@ Session 7: Goals NL emission added. start_server.ps1 created. Hit rate tags on a
 
 **Weekly/ongoing:**
 - Consider bumping fetch windows for July–Oct (hitting 1,000-fixture cap)
-- Goals NL picks have no pick_odd (bookmaker over/under line not stored) — fetch and store goals odds later
-- EV analysis for goals markets pending (over 1.5 is low-odds; assess value before scaling)
+- Goals odds now stored (goals_over_15/25/35_odd) — Over 1.5 rarely quoted by bookmakers; pick_odd falls back to Over 2.5
+- EV analysis for goals markets pending — Over 2.5 is the practical betting line; compare gs_hit (54–65%) vs market price
 
 ## Reference documents
 
