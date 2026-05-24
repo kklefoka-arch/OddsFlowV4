@@ -191,6 +191,7 @@ def picks(days: int = Query(3, ge=1, le=14)) -> dict[str, Any]:
             SELECT f.id, f.date, f.tier,
                    f.home_odd, f.draw_odd, f.away_odd,
                    f.btts_yes_odd, f.btts_no_odd,
+                   f.goals_over_15_odd, f.goals_over_25_odd, f.goals_over_35_odd,
                    ht.name AS home_team, at2.name AS away_team,
                    lg.name AS league, lg.country, lg.tier AS league_tier
             FROM fixtures f
@@ -294,6 +295,8 @@ def picks(days: int = Query(3, ge=1, le=14)) -> dict[str, Any]:
             if goals_cell is not None:
                 goals_line = natural_line(zone, "goals")
                 goals_pick = f"Over {goals_line} Goals"
+                _goals_odd_col = {1.5: "goals_over_15_odd", 2.5: "goals_over_25_odd", 3.5: "goals_over_35_odd"}
+                goals_pick_odd = d.get(_goals_odd_col.get(goals_line, "")) or d.get("goals_over_25_odd")
                 picks_out.append({
                     "fixture_id":              d["id"],
                     "kickoff_utc":             d["date"],
@@ -306,7 +309,7 @@ def picks(days: int = Query(3, ge=1, le=14)) -> dict[str, Any]:
                     "pick":                    goals_pick,
                     "line":                    goals_line,
                     "pick_leg":                None,
-                    "pick_odd":                None,
+                    "pick_odd":                goals_pick_odd,
                     "pick_odd_derived":        False,
                     "pick_class":              "promote",
                     "partition_key":           f"{zone}:{bts}",
@@ -326,7 +329,7 @@ def picks(days: int = Query(3, ge=1, le=14)) -> dict[str, Any]:
                     "tier":       tier,
                     "market":     "goals_nl",
                     "pick":       goals_pick,
-                    "pick_odd":   None,
+                    "pick_odd":   goals_pick_odd,
                     "confidence": round(goals_cell["gn_hit"] / 100, 4),
                 })
                 emitted_any = True
