@@ -16,10 +16,10 @@ Markets: DNB (strong/standard zones) or Alpha Win (one_sided zone). No goals/cor
 
 ## Current phase
 
-**Production — V3 engine live, zero-based test passed.** Picks from live `compute_foundation()`.
-162 picks in 3-day window (151 dnb, 11 alpha_win). 10 cells promoted, hit rates 69–88%.
-DB: 32,993 fixtures (28,477 settled, 4,391 upcoming). All 7 SPA tabs + 11 endpoints return 200.
-Session 5: Zero-based 6-phase test, 4 bugs fixed (date filter, live foundation, promoted_cells count, settle.py).
+**Production — 3 markets live: DNB, Alpha Win, Goals NL.** Picks from live `compute_foundation()`.
+164 picks in 3-day window (79 dnb, 76 goals_nl, 9 alpha_win). 10 threeway cells + 6 goals cells promoted.
+DB: 31,644 fixtures (28,607 settled, 3,037 upcoming). All 8 SPA tabs + 11 endpoints return 200.
+Session 7: Goals NL emission added. start_server.ps1 created. Hit rate tags on all pick card market rows.
 
 ## Key files
 
@@ -54,6 +54,8 @@ Session 5: Zero-based 6-phase test, 4 bugs fixed (date filter, live foundation, 
 
 **Weekly/ongoing:**
 - Consider bumping fetch windows for July–Oct (hitting 1,000-fixture cap)
+- Goals NL picks have no pick_odd (bookmaker over/under line not stored) — fetch and store goals odds later
+- EV analysis for goals markets pending (over 1.5 is low-odds; assess value before scaling)
 
 ## Reference documents
 
