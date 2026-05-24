@@ -18,6 +18,7 @@ from app.db.database import get_conn
 from app.engine.classify import classify_fixture
 from app.engine.foundation import load_foundation
 from app.engine.promotion import compute_foundation, PROMOTE, PROMOTE_TOLERANCE
+from app.engine.natural_lines import natural_line
 from app.settings import settings
 
 router = APIRouter(tags=["picks"])
@@ -174,12 +175,15 @@ def picks(days: int = Query(3, ge=1, le=14)) -> dict[str, Any]:
         foundation = compute_foundation(foundation_rows)
 
         promoted: dict[tuple[str, str], dict[str, Any]] = {}
+        promoted_goals: dict[tuple[str, str], dict[str, Any]] = {}
         for cell in foundation["all"]:
+            if cell["zone"] == "low":
+                continue
+            key = (cell["zone"], cell["bts_pocket"])
             if cell["threeway_promote"] in (PROMOTE, PROMOTE_TOLERANCE):
-                if cell["zone"] != "low":
-                    key = (cell["zone"], cell["bts_pocket"])
-                    if key not in promoted:
-                        promoted[key] = cell
+                promoted.setdefault(key, cell)
+            if cell["goals_promote"] in (PROMOTE, PROMOTE_TOLERANCE):
+                promoted_goals.setdefault(key, cell)
 
         # --- Fetch upcoming fixtures in window ---
         rows = conn.execute(
@@ -216,78 +220,119 @@ def picks(days: int = Query(3, ge=1, le=14)) -> dict[str, Any]:
                 skip_reasons["unclassifiable"] += 1
                 continue
 
-            cell = promoted.get((zone, bts))
-            if cell is None:
-                skip_reasons["partition_not_promoted"] += 1
-                continue
-
-            market = _ZONE_MARKET.get(zone)
-            if market is None:
-                skip_reasons["partition_not_promoted"] += 1
-                continue
-
             tier = d.get("league_tier") or d.get("tier")
             home_odd = d.get("home_odd")
             away_odd = d.get("away_odd")
             draw_odd = d.get("draw_odd")
             alpha_home = _alpha_is_home(home_odd, away_odd)
             alpha_team = (d.get("home_team") or "") if alpha_home else (d.get("away_team") or "")
+            emitted_any = False
 
-            drift_key = (zone, bts)
-            if drift_key not in drift_cache:
-                try:
-                    drift_cache[drift_key] = _compute_cell_drift(
-                        conn, zone, bts, cell["threeway_hit"]
-                    )
-                except Exception:
-                    drift_cache[drift_key] = {
-                        "flag": None, "gap_pp": None, "recent_n": None, "recent_hit": None
-                    }
-            drift = drift_cache[drift_key]
+            # --- Threeway pick (DNB / Alpha Win) ---
+            cell = promoted.get((zone, bts))
+            market = _ZONE_MARKET.get(zone)
+            if cell is not None and market is not None:
+                drift_key = (zone, bts)
+                if drift_key not in drift_cache:
+                    try:
+                        drift_cache[drift_key] = _compute_cell_drift(
+                            conn, zone, bts, cell["threeway_hit"]
+                        )
+                    except Exception:
+                        drift_cache[drift_key] = {
+                            "flag": None, "gap_pp": None, "recent_n": None, "recent_hit": None
+                        }
+                drift = drift_cache[drift_key]
 
-            if market == "dnb":
-                pick_label = alpha_team
-                pick_odd, derived = _derive_dnb_odd(home_odd, draw_odd, away_odd)
-            else:  # alpha_win
-                pick_label = alpha_team
-                pick_odd = round(min(home_odd, away_odd), 3) if (home_odd and away_odd) else None
-                derived = False
+                if market == "dnb":
+                    pick_label = alpha_team
+                    pick_odd, derived = _derive_dnb_odd(home_odd, draw_odd, away_odd)
+                else:  # alpha_win
+                    pick_label = alpha_team
+                    pick_odd = round(min(home_odd, away_odd), 3) if (home_odd and away_odd) else None
+                    derived = False
 
-            picks_out.append({
-                "fixture_id":              d["id"],
-                "kickoff_utc":             d["date"],
-                "home_team":               d.get("home_team") or "",
-                "away_team":               d.get("away_team") or "",
-                "league":                  d.get("league") or "",
-                "country":                 d.get("country") or "",
-                "tier":                    tier,
-                "market":                  market,
-                "pick":                    pick_label,
-                "line":                    None,
-                "pick_leg":                None,
-                "pick_odd":                pick_odd,
-                "pick_odd_derived":        derived,
-                "pick_class":              "promote",
-                "partition_key":           f"{zone}:{bts}",
-                "draw_zone":               zone,
-                "cell_drift_flag":         drift["flag"],
-                "cell_drift_gap_pp":       drift["gap_pp"],
-                "cell_drift_recent_n":     drift["recent_n"],
-                "cell_historical_hit":     cell["threeway_hit"],
-                "cell_historical_n":       cell["n_fixtures"],
-                "asian_alternative":       None,
-                "asian_corners_alternative": None,
-            })
-            emit_rows.append({
-                "fixture_id": d["id"],
-                "zone":       zone,
-                "bts_pocket": bts,
-                "tier":       tier,
-                "market":     market,
-                "pick":       pick_label,
-                "pick_odd":   pick_odd,
-                "confidence": round(cell["threeway_hit"] / 100, 4),
-            })
+                picks_out.append({
+                    "fixture_id":              d["id"],
+                    "kickoff_utc":             d["date"],
+                    "home_team":               d.get("home_team") or "",
+                    "away_team":               d.get("away_team") or "",
+                    "league":                  d.get("league") or "",
+                    "country":                 d.get("country") or "",
+                    "tier":                    tier,
+                    "market":                  market,
+                    "pick":                    pick_label,
+                    "line":                    None,
+                    "pick_leg":                None,
+                    "pick_odd":                pick_odd,
+                    "pick_odd_derived":        derived,
+                    "pick_class":              "promote",
+                    "partition_key":           f"{zone}:{bts}",
+                    "draw_zone":               zone,
+                    "cell_drift_flag":         drift["flag"],
+                    "cell_drift_gap_pp":       drift["gap_pp"],
+                    "cell_drift_recent_n":     drift["recent_n"],
+                    "cell_historical_hit":     cell["threeway_hit"],
+                    "cell_historical_n":       cell["n_fixtures"],
+                    "asian_alternative":       None,
+                    "asian_corners_alternative": None,
+                })
+                emit_rows.append({
+                    "fixture_id": d["id"],
+                    "zone":       zone,
+                    "bts_pocket": bts,
+                    "tier":       tier,
+                    "market":     market,
+                    "pick":       pick_label,
+                    "pick_odd":   pick_odd,
+                    "confidence": round(cell["threeway_hit"] / 100, 4),
+                })
+                emitted_any = True
+
+            # --- Goals natural line pick ---
+            goals_cell = promoted_goals.get((zone, bts))
+            if goals_cell is not None:
+                goals_line = natural_line(zone, "goals")
+                goals_pick = f"Over {goals_line} Goals"
+                picks_out.append({
+                    "fixture_id":              d["id"],
+                    "kickoff_utc":             d["date"],
+                    "home_team":               d.get("home_team") or "",
+                    "away_team":               d.get("away_team") or "",
+                    "league":                  d.get("league") or "",
+                    "country":                 d.get("country") or "",
+                    "tier":                    tier,
+                    "market":                  "goals_nl",
+                    "pick":                    goals_pick,
+                    "line":                    goals_line,
+                    "pick_leg":                None,
+                    "pick_odd":                None,
+                    "pick_odd_derived":        False,
+                    "pick_class":              "promote",
+                    "partition_key":           f"{zone}:{bts}",
+                    "draw_zone":               zone,
+                    "cell_drift_flag":         None,
+                    "cell_drift_gap_pp":       None,
+                    "cell_drift_recent_n":     None,
+                    "cell_historical_hit":     goals_cell["gn_hit"],
+                    "cell_historical_n":       goals_cell["n_fixtures"],
+                    "asian_alternative":       None,
+                    "asian_corners_alternative": None,
+                })
+                emit_rows.append({
+                    "fixture_id": d["id"],
+                    "zone":       zone,
+                    "bts_pocket": bts,
+                    "tier":       tier,
+                    "market":     "goals_nl",
+                    "pick":       goals_pick,
+                    "pick_odd":   None,
+                    "confidence": round(goals_cell["gn_hit"] / 100, 4),
+                })
+                emitted_any = True
+
+            if not emitted_any:
+                skip_reasons["partition_not_promoted"] += 1
 
         emit_summary = write_emit_log(conn, emit_rows)
 
