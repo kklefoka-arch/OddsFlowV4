@@ -254,6 +254,10 @@ function renderPicksSummary(el, body) {
       <span class="summary-value">${cm.alpha_win || 0}</span>
     </div>
     <div class="summary-item">
+      <span class="summary-label">Goals NL</span>
+      <span class="summary-value">${cm.goals_nl || 0}</span>
+    </div>
+    <div class="summary-item">
       <span class="summary-label">Unclassifiable</span>
       <span class="summary-value">${sk.unclassifiable || 0}</span>
     </div>
@@ -314,7 +318,8 @@ function renderPicksList(el, picks) {
 }
 
 function renderFixtureCard(picks) {
-  const p0 = picks[0];
+  // Prefer threeway pick as primary source for drift/hit chip; fall back to first pick
+  const p0 = picks.find(p => p.market === 'dnb' || p.market === 'alpha_win') || picks[0];
   const dt = parseKickoffUtc(p0.kickoff_utc);
   const date = dt ? dt.toLocaleDateString() : '—';
   const time = dt ? dt.toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'}) : '';
@@ -333,12 +338,12 @@ function renderFixtureCard(picks) {
     if (!byMarket.has(p.market)) byMarket.set(p.market, []);
     byMarket.get(p.market).push(p);
   }
-  // V4: dnb + alpha_win are the only markets
-  const order = ['total_goals', 'total_corners', 'dnb', 'alpha_win'];
+  const order = ['total_goals', 'total_corners', 'dnb', 'alpha_win', 'goals_nl'];
   const marketRows = order
     .filter(m => byMarket.has(m))
     .map(m => renderMarketRow(m, byMarket.get(m)))
     .join('');
+
 
   return `
     <div class="card fixture-card" data-picks='${JSON.stringify(picks).replace(/'/g, "&#39;")}'>
@@ -382,13 +387,13 @@ function renderDriftChipForCard(flag, gap_pp, recent_n) {
   return `<span class="${cls}" title="${tooltip}">${flag}${gap}${n}</span>`;
 }
 
-// V4: added alpha_win label
 function marketLabel(m) {
   return {
     total_goals:   'Goals',
     total_corners: 'Corners',
     dnb:           'DNB (Alpha Win or Draw)',
     alpha_win:     'Alpha Win',
+    goals_nl:      'Goals — Natural Line',
   }[m] || m;
 }
 
@@ -955,8 +960,7 @@ function openInspector(picks) {
     if (!byMarket.has(p.market)) byMarket.set(p.market, []);
     byMarket.get(p.market).push(p);
   }
-  // V4: dnb + alpha_win markets
-  const order = ['total_goals', 'total_corners', 'dnb', 'alpha_win'];
+  const order = ['total_goals', 'total_corners', 'dnb', 'alpha_win', 'goals_nl'];
   const marketBlocks = order
     .filter(m => byMarket.has(m))
     .map(m => {
