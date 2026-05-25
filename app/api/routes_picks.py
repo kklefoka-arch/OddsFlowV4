@@ -61,9 +61,18 @@ def _derive_dnb_odd(home: float | None, draw: float | None, away: float | None) 
 
 
 def settle_pick(market: str, home_score: int | None, away_score: int | None,
-                home_odd: float | None, away_odd: float | None) -> float | None:
+                home_odd: float | None, away_odd: float | None,
+                pick: str = "") -> float | None:
     """Resolve a V4 pick against a settled fixture. Returns 1.0/0.5/0.0 or None."""
-    if home_score is None or away_score is None or home_odd is None or away_odd is None:
+    import re as _re
+    if home_score is None or away_score is None:
+        return None
+    if market == "goals_nl":
+        m = _re.match(r"Over (\d+\.5) Goals", pick or "")
+        if not m:
+            return None
+        return 1.0 if (home_score + away_score) > float(m.group(1)) else 0.0
+    if home_odd is None or away_odd is None:
         return None
     alpha_home = _alpha_is_home(home_odd, away_odd)
     alpha_wins = (home_score > away_score) if alpha_home else (away_score > home_score)
@@ -123,12 +132,29 @@ def _compute_cell_drift(conn: sqlite3.Connection, zone: str, bts: str,
 
 
 def write_emit_log(conn: sqlite3.Connection, emit_rows: list[dict]) -> dict[str, Any]:
-    """Write picks to emit_log, idempotent via INSERT OR IGNORE on pick_uuid."""
+    """Write picks to emit_log. INSERT OR IGNORE on pick_uuid (idempotent).
+
+    - If the row already exists and pick_odd is NULL, backfill pick_odd.
+    - If a different pick for the same (fixture_id, market) exists without a
+      pick_results row, supersede it: delete the stale row first, then insert
+      the new one. This handles alpha-team flips between fetch runs.
+    """
     now_sql = datetime.now(tz=timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
     new_count = 0
     skip_count = 0
+    updated_count = 0
     for p in emit_rows:
         uuid = make_pick_uuid(p["fixture_id"], p["market"], p["pick"])
+        # Supersede stale pick for same (fixture, market) if pick label changed
+        # and the stale row has no settlement record.
+        conn.execute(
+            """
+            DELETE FROM emit_log
+            WHERE fixture_id = ? AND market = ? AND pick_uuid != ?
+              AND pick_uuid NOT IN (SELECT pick_uuid FROM pick_results)
+            """,
+            (p["fixture_id"], p["market"], uuid),
+        )
         result = conn.execute(
             """
             INSERT OR IGNORE INTO emit_log
@@ -152,9 +178,20 @@ def write_emit_log(conn: sqlite3.Connection, emit_rows: list[dict]) -> dict[str,
         if result.rowcount > 0:
             new_count += 1
         else:
-            skip_count += 1
+            # Row exists — backfill pick_odd if it was NULL and we now have a value
+            if p.get("pick_odd") is not None:
+                upd = conn.execute(
+                    "UPDATE emit_log SET pick_odd = ? WHERE pick_uuid = ? AND pick_odd IS NULL",
+                    (p["pick_odd"], uuid),
+                )
+                if upd.rowcount > 0:
+                    updated_count += 1
+                else:
+                    skip_count += 1
+            else:
+                skip_count += 1
     conn.commit()
-    return {"new": new_count, "skip": skip_count}
+    return {"new": new_count, "skip": skip_count, "updated": updated_count}
 
 
 # ---------------------------------------------------------------------------
@@ -293,10 +330,22 @@ def picks(days: int = Query(3, ge=1, le=14)) -> dict[str, Any]:
             # --- Goals natural line pick ---
             goals_cell = promoted_goals.get((zone, bts))
             if goals_cell is not None:
-                goals_line = natural_line(zone, "goals")
-                goals_pick = f"Over {goals_line} Goals"
                 _goals_odd_col = {1.5: "goals_over_15_odd", 2.5: "goals_over_25_odd", 3.5: "goals_over_35_odd"}
-                goals_pick_odd = d.get(_goals_odd_col.get(goals_line, "")) or d.get("goals_over_25_odd")
+                # Determine effective line: use natural line if its odd is available,
+                # otherwise step up until we find one that is quoted.
+                natural = natural_line(zone, "goals")
+                effective_line = natural
+                goals_pick_odd = d.get(_goals_odd_col.get(natural, ""))
+                if goals_pick_odd is None:
+                    for fallback in [2.5, 3.5, 1.5]:
+                        if fallback == natural:
+                            continue
+                        candidate = d.get(_goals_odd_col.get(fallback, ""))
+                        if candidate is not None:
+                            goals_pick_odd = candidate
+                            effective_line = fallback
+                            break
+                goals_pick = f"Over {effective_line} Goals"
                 picks_out.append({
                     "fixture_id":              d["id"],
                     "kickoff_utc":             d["date"],
@@ -307,7 +356,7 @@ def picks(days: int = Query(3, ge=1, le=14)) -> dict[str, Any]:
                     "tier":                    tier,
                     "market":                  "goals_nl",
                     "pick":                    goals_pick,
-                    "line":                    goals_line,
+                    "line":                    effective_line,
                     "pick_leg":                None,
                     "pick_odd":                goals_pick_odd,
                     "pick_odd_derived":        False,

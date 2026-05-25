@@ -3,22 +3,31 @@
 Run after fetch_upcoming.py or whenever fixture scores may have updated.
 Writes unsettled emit_log rows (where fixture has a result) to pick_results.
 """
+import re
 import sqlite3
 from datetime import datetime, timezone
 
 DB = r"C:\OddsFlowV4\data\oddsflow_v4.db"
 
 
-def settle_pick(market: str, home_score, away_score, home_odd, away_odd):
-    if home_score is None or away_score is None or home_odd is None or away_odd is None:
+def settle_pick(market: str, home_score, away_score, home_odd, away_odd, pick: str = ""):
+    if home_score is None or away_score is None:
         return None
-    alpha_home = home_odd <= away_odd
-    alpha_wins = (home_score > away_score) if alpha_home else (away_score > home_score)
-    draw = (home_score == away_score)
-    if market == "dnb":
-        return 1.0 if alpha_wins else (0.5 if draw else 0.0)
-    if market == "alpha_win":
+    if market == "dnb" or market == "alpha_win":
+        if home_odd is None or away_odd is None:
+            return None
+        alpha_home = home_odd <= away_odd
+        alpha_wins = (home_score > away_score) if alpha_home else (away_score > home_score)
+        draw = (home_score == away_score)
+        if market == "dnb":
+            return 1.0 if alpha_wins else (0.5 if draw else 0.0)
         return 1.0 if alpha_wins else 0.0
+    if market == "goals_nl":
+        m = re.match(r"Over (\d+\.5) Goals", pick or "")
+        if not m:
+            return None
+        line = float(m.group(1))
+        return 1.0 if (home_score + away_score) > line else 0.0
     return None
 
 
@@ -43,7 +52,7 @@ print(f"Unsettled picks ready for settlement: {len(rows)}")
 settled = skipped = 0
 for r in rows:
     outcome = settle_pick(r["market"], r["home_score"], r["away_score"],
-                          r["home_odd"], r["away_odd"])
+                          r["home_odd"], r["away_odd"], r["pick"])
     if outcome is None:
         skipped += 1
         continue

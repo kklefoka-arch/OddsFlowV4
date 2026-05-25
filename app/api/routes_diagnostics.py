@@ -38,9 +38,9 @@ def today_summary() -> dict[str, Any]:
 
     conn = get_conn(settings.sqlite_path)
     try:
-        # Fixtures kicking off today
+        # Fixtures kicking off today (date stores full datetime, use substr match)
         kickoff_today = conn.execute(
-            "SELECT COUNT(*) FROM fixtures WHERE date = ?", (today_sql,)
+            "SELECT COUNT(*) FROM fixtures WHERE substr(date,1,10) = ?", (today_sql,)
         ).fetchone()[0]
 
         fetched_24h = conn.execute(

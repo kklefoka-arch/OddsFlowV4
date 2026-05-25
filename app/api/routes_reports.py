@@ -14,7 +14,8 @@ from fastapi.responses import StreamingResponse
 from app.api.routes_picks import settle_pick
 from app.db.database import get_conn
 from app.engine.classify import zone_of, bts_of
-from app.engine.static_policy import PROMOTED_CELLS
+from app.engine.foundation import load_foundation
+from app.engine.promotion import compute_foundation, PROMOTE, PROMOTE_TOLERANCE
 from app.settings import settings
 
 router = APIRouter(prefix="/reports", tags=["reports"])
@@ -72,7 +73,7 @@ def emit_performance(
         except ValueError:
             continue
         outcome = settle_pick(r["market"], r["home_score"], r["away_score"],
-                               r["home_odd"], r["away_odd"])
+                               r["home_odd"], r["away_odd"], r["pick"])
         legs.append((emitted_at, r["fixture_id"], r["market"], r["pick"], outcome))
 
     windows_out = []
@@ -193,7 +194,7 @@ def emit_recent(
             "totals": {"wins": 0, "voids": 0, "losses": 0, "pending": 0},
         })
         outcome = settle_pick(r["market"], r["home_score"], r["away_score"],
-                               r["home_odd"], r["away_odd"])
+                               r["home_odd"], r["away_odd"], r["pick"])
         lbl = ("PENDING" if outcome is None else
                "WIN" if outcome == 1.0 else
                "VOID" if outcome == 0.5 else "LOSS")
@@ -322,6 +323,17 @@ def emit_market_breakdown(
             """,
             [cutoff.strftime("%Y-%m-%d %H:%M:%S"), *tier_params],
         ).fetchall()
+        try:
+            _f_rows = load_foundation(conn)
+            _foundation = compute_foundation(_f_rows)
+            live_promoted_keys: set[tuple[str, str]] = {
+                (c["zone"], c["bts_pocket"])
+                for c in _foundation["all"]
+                if c["threeway_promote"] in (PROMOTE, PROMOTE_TOLERANCE) and c["zone"] != "low"
+            }
+        except Exception:
+            from app.engine.static_policy import PROMOTED_CELLS
+            live_promoted_keys = set(PROMOTED_CELLS.keys())
     finally:
         conn.close()
 
@@ -332,7 +344,7 @@ def emit_market_breakdown(
         if zone is None or bts is None:
             continue
         outcome = settle_pick(r["market"], r["home_score"], r["away_score"],
-                               r["home_odd"], r["away_odd"])
+                               r["home_odd"], r["away_odd"], r["pick"])
         if outcome is None:
             continue
         key = (zone, bts, r["market"], r["pick"])
@@ -344,11 +356,10 @@ def emit_market_breakdown(
         voids = sum(1 for o in outs if o == 0.5)
         n = len(outs)
         hit_rate = (wins + 0.5 * voids) / n if n > 0 else None
-        cell_def = PROMOTED_CELLS.get((zone, bts))
         cell = cells.setdefault((zone, bts), {
             "zone": zone,
             "bts_v2": bts,
-            "is_promoted": bool(cell_def and cell_def.get("cell_promoted")),
+            "is_promoted": (zone, bts) in live_promoted_keys,
             "markets": [],
         })
         cell["markets"].append({

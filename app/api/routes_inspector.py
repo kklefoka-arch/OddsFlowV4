@@ -11,6 +11,8 @@ from fastapi import APIRouter, Query
 from app.api.routes_picks import settle_pick
 from app.db.database import get_conn
 from app.engine.classify import zone_of, bts_of
+from app.engine.foundation import load_foundation
+from app.engine.promotion import compute_foundation, PROMOTE, PROMOTE_TOLERANCE
 from app.engine.static_policy import PROMOTED_CELLS
 from app.settings import settings
 
@@ -35,24 +37,38 @@ def _drift_flag(gap_pp: float | None, recent_n: int, min_n: int = DRIFT_MIN_N) -
     return "stable"
 
 
+def _get_live_promoted(conn: sqlite3.Connection) -> dict[tuple[str, str], dict[str, Any]]:
+    """Build promoted cell dict from live foundation. Falls back to PROMOTED_CELLS on error."""
+    try:
+        foundation_rows = load_foundation(conn)
+        foundation = compute_foundation(foundation_rows)
+        return {
+            (c["zone"], c["bts_pocket"]): c
+            for c in foundation["all"]
+            if c["threeway_promote"] in (PROMOTE, PROMOTE_TOLERANCE) and c["zone"] != "low"
+        }
+    except Exception:
+        return dict(PROMOTED_CELLS)
+
+
 def compute_drift_rows(
     conn: sqlite3.Connection,
     *,
     recent_days: int = 30,
     min_sample_n: int = DRIFT_MIN_N,
 ) -> list[dict[str, Any]]:
-    """Drift for each PROMOTE cell: stone-policy historical vs recent emit_log outcomes."""
+    """Drift for each live-promoted cell: live-foundation historical hit vs recent emit_log."""
+    live_promoted = _get_live_promoted(conn)
     cutoff = (datetime.now(tz=timezone.utc) - timedelta(days=recent_days)).strftime("%Y-%m-%d %H:%M:%S")
 
     recent_rows = conn.execute(
         """
-        SELECT em.zone, em.bts_pocket, em.market,
+        SELECT em.zone, em.bts_pocket, em.market, em.pick,
                f.home_score, f.away_score, f.home_odd, f.away_odd
         FROM emit_log em
         JOIN fixtures f ON f.id = em.fixture_id
         WHERE em.emitted_at >= ?
           AND f.home_score IS NOT NULL AND f.away_score IS NOT NULL
-          AND f.home_odd IS NOT NULL AND f.away_odd IS NOT NULL
         """,
         (cutoff,),
     ).fetchall()
@@ -60,10 +76,10 @@ def compute_drift_rows(
     recent: dict[tuple[str, str], dict[str, float]] = {}
     for r in recent_rows:
         key = (r["zone"], r["bts_pocket"])
-        if key not in PROMOTED_CELLS:
+        if key not in live_promoted:
             continue
         outcome = settle_pick(r["market"], r["home_score"], r["away_score"],
-                               r["home_odd"], r["away_odd"])
+                               r["home_odd"], r["away_odd"], r["pick"])
         if outcome is None:
             continue
         if key not in recent:
@@ -72,9 +88,9 @@ def compute_drift_rows(
         recent[key]["n"] += 1
 
     rows: list[dict[str, Any]] = []
-    for (zone, bts), cell in sorted(PROMOTED_CELLS.items()):
+    for (zone, bts), cell in sorted(live_promoted.items()):
         hist_pct = cell["threeway_hit"]
-        hist_n = cell["n_fixtures"]
+        hist_n = cell.get("n_fixtures", cell.get("n", 0))
         rec = recent.get((zone, bts), {"hits": 0.0, "n": 0})
         r_n = rec["n"]
         r_hit = round(rec["hits"] / r_n * 100, 1) if r_n > 0 else None

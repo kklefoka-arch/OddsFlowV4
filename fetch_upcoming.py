@@ -135,20 +135,26 @@ inserted = updated = skipped = 0
 # Fetch in monthly windows — keeps each batch small and avoids timeouts.
 # The leagueIds filter is silently ignored on this endpoint, so we filter
 # by league in Python after fetch.
+# First window starts from TODAY (not a hardcoded date) to avoid re-fetching
+# already-played fixtures on every run.
+# July–Oct windows use monthly splits (max_pages=30) to avoid hitting the
+# 20-page / 1,000-fixture cap for dense periods.
 windows = [
-    ("2026-05-22", "2026-06-30"),
-    ("2026-07-01", "2026-08-31"),
-    ("2026-09-01", "2026-10-31"),
-    ("2026-11-01", "2026-12-31"),
+    (TODAY, "2026-06-30", 20),
+    ("2026-07-01", "2026-07-31", 30),
+    ("2026-08-01", "2026-08-31", 30),
+    ("2026-09-01", "2026-09-30", 30),
+    ("2026-10-01", "2026-10-31", 30),
+    ("2026-11-01", "2026-12-31", 20),
 ]
 
 all_fixtures: list = []
-for start, end in windows:
+for start, end, max_pg in windows:
     print(f"\nWindow {start} to {end}")
     batch = fetch_all(
         f"fixtures/between/{start}/{end}",
         {"include": "participants;odds"},
-        max_pages=20,
+        max_pages=max_pg,
     )
     # Filter to active leagues only
     relevant = [fx for fx in batch if fx.get("league_id") in ACTIVE_LEAGUES]
