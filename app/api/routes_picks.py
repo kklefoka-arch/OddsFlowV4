@@ -1,11 +1,11 @@
-"""OddsFlow V4 — Picks endpoint.
+"""OddsFlow V4 -- Picks endpoint.
 
 Picks fire from the V3 static policy (static_policy.V3_ACTIVE).
 Markets per zone:
-  strong    → goals_nl (Over 1.5)
-  standard  → goals_nl (Over 1.5) + corners_nl (Over 8.5)
-  low       → dnb  [activated — LOW_ZONE_SUPPRESS=False]
-  one_sided → alpha_win
+  strong    -> goals_nl (Over 1.5)
+  standard  -> goals_nl (Over 1.5) + corners_nl (Over 8.5)
+  low       -> dnb  [activated -- LOW_ZONE_SUPPRESS=False]
+  one_sided -> alpha_win
 """
 
 from __future__ import annotations
@@ -261,7 +261,7 @@ def picks(days: int = Query(3, ge=1, le=14)) -> dict[str, Any]:
                         }
                 drift = drift_cache[drift_key]
 
-                # ── build pick label and odd ──────────────────────────────
+                # build pick label and odd
                 if market == "goals_nl":
                     line     = mkt_cfg["line"]
                     odd_col  = mkt_cfg["odd_col"]
