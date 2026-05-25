@@ -52,12 +52,22 @@ ACTIVE_LEAGUES = {
 BASE = "https://api.sportmonks.com/v3/football"
 
 
-def api_get(path: str, params: dict) -> dict:
+def api_get(path: str, params: dict, retries: int = 3) -> dict:
     params["api_token"] = TOKEN
     url = f"{BASE}/{path}?{urllib.parse.urlencode(params)}"
     req = urllib.request.Request(url)
-    with urllib.request.urlopen(req, timeout=30) as r:
-        return json.loads(r.read())
+    last_err: Exception | None = None
+    for attempt in range(retries):
+        try:
+            with urllib.request.urlopen(req, timeout=60) as r:
+                return json.loads(r.read())
+        except Exception as e:
+            last_err = e
+            if attempt < retries - 1:
+                wait = 4 * (2 ** attempt)
+                print(f"  [retry {attempt + 1}/{retries - 1}] {e} — sleeping {wait}s")
+                time.sleep(wait)
+    raise last_err  # type: ignore[misc]
 
 
 def fetch_all(path: str, params: dict, max_pages: int = 30) -> list:
@@ -79,7 +89,8 @@ def fetch_all(path: str, params: dict, max_pages: int = 30) -> list:
 
 def extract_odds(odds_list: list) -> tuple:
     home_odd = draw_odd = away_odd = btts_yes = btts_no = None
-    goals_buckets: dict[float, list] = {1.5: [], 2.5: [], 3.5: []}
+    goals_buckets:   dict[float, list] = {1.5: [], 2.5: [], 3.5: []}
+    corners_buckets: dict[float, list] = {7.5: [], 8.5: [], 9.5: []}
     for o in (odds_list or []):
         mid   = o.get("market_id")
         label = (o.get("label") or "").lower().strip()
@@ -104,10 +115,21 @@ def extract_odds(odds_list: list) -> tuple:
                 continue
             if line in goals_buckets:
                 goals_buckets[line].append(val)
-    g15 = max(goals_buckets[1.5]) if goals_buckets[1.5] else None
-    g25 = max(goals_buckets[2.5]) if goals_buckets[2.5] else None
-    g35 = max(goals_buckets[3.5]) if goals_buckets[3.5] else None
-    return home_odd, draw_odd, away_odd, btts_yes, btts_no, g15, g25, g35
+        elif mid == 45 and label == "over":
+            # Corners total — market_id 45 in Sportmonks v3
+            try:
+                line = float(o.get("total") or "")
+            except (TypeError, ValueError):
+                continue
+            if line in corners_buckets:
+                corners_buckets[line].append(val)
+    g15  = max(goals_buckets[1.5])   if goals_buckets[1.5]   else None
+    g25  = max(goals_buckets[2.5])   if goals_buckets[2.5]   else None
+    g35  = max(goals_buckets[3.5])   if goals_buckets[3.5]   else None
+    c75  = max(corners_buckets[7.5]) if corners_buckets[7.5] else None
+    c85  = max(corners_buckets[8.5]) if corners_buckets[8.5] else None
+    c95  = max(corners_buckets[9.5]) if corners_buckets[9.5] else None
+    return home_odd, draw_odd, away_odd, btts_yes, btts_no, g15, g25, g35, c75, c85, c95
 
 
 conn = sqlite3.connect(DB)
@@ -201,7 +223,7 @@ for fx in fixtures:
         skipped += 1
         continue
 
-    home_odd, draw_odd, away_odd, btts_yes, btts_no, g15, g25, g35 = extract_odds(fx.get("odds", []))
+    home_odd, draw_odd, away_odd, btts_yes, btts_no, g15, g25, g35, c75, c85, c95 = extract_odds(fx.get("odds", []))
 
     # Classify zone + bts_pocket inline for storage
     def _zone(d):
@@ -230,10 +252,12 @@ for fx in fixtures:
                 league_id=?, date=?, home_odd=?, draw_odd=?, away_odd=?,
                 btts_yes_odd=?, btts_no_odd=?,
                 goals_over_15_odd=?, goals_over_25_odd=?, goals_over_35_odd=?,
+                corners_over_75_odd=?, corners_over_85_odd=?, corners_over_95_odd=?,
                 draw_zone=?, bts_pocket=?, updated_at=?
             WHERE sportmonks_id=?
         """, (internal_league_id, kickoff_utc, home_odd, draw_odd, away_odd,
-              btts_yes, btts_no, g15, g25, g35, fx_zone, fx_bts, now_ts, sm_id))
+              btts_yes, btts_no, g15, g25, g35, c75, c85, c95,
+              fx_zone, fx_bts, now_ts, sm_id))
         updated += 1
     else:
         conn.execute("""
@@ -242,14 +266,15 @@ for fx in fixtures:
                  home_team_id, away_team_id, home_team_name, away_team_name,
                  home_odd, draw_odd, away_odd, btts_yes_odd, btts_no_odd,
                  goals_over_15_odd, goals_over_25_odd, goals_over_35_odd,
+                 corners_over_75_odd, corners_over_85_odd, corners_over_95_odd,
                  draw_zone, bts_pocket, created_at, updated_at)
-            VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+            VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
         """, (
             sm_id, internal_league_id, tier, kickoff_utc, "scheduled",
             ht["id"], at["id"],
             home_team.get("name"), away_team.get("name"),
             home_odd, draw_odd, away_odd, btts_yes, btts_no,
-            g15, g25, g35,
+            g15, g25, g35, c75, c85, c95,
             fx_zone, fx_bts, now_ts, now_ts,
         ))
         inserted += 1

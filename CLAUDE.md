@@ -12,15 +12,21 @@ Host (local): `http://localhost:8083` | Host (ngrok): `https://steadier-legwarme
 
 Football betting analytics engine. Ingests fixtures + odds from Sportmonks, classifies
 each fixture into a (draw_zone × bts_pocket) cell, and emits picks for promoted cells.
-Markets: DNB (strong/standard zones), Alpha Win (one_sided zone), Goals NL (6 cells, Over 2.5 line).
+
+**V3 policy (ground zero — deployed 2026-05-25):**
+9 active cells from 28,473-fixture analysis. 10 PASS / 1 MARGINAL / 1 FLAG.
+Markets: goals_nl Over 1.5 (strong + standard), corners_nl Over 8.5 (standard only),
+dnb (low zone), alpha_win (one_sided).
 
 ## Current phase
 
-**Production — 3 markets live: DNB, Alpha Win, Goals NL.** Picks from live `compute_foundation()`.
-392 emit_log rows — 192 settled (101W 35V 56L = 61.7% hit rate), 200 pending.
-By market 7d: dnb=267, goals_nl=112 (88% with odd), alpha_win=23. 11 cells promoted (incl. 1 tolerance).
-DB: 31,990 fixtures (28,801 settled, 3,189 upcoming). All 8 SPA tabs + endpoints return 200.
-Session 9: Full pipeline live. settlement working. Goals NL effective-line fallback active.
+**V3 policy live.** Picks from static_policy.V3_ACTIVE (not compute_foundation).
+Prior state: 392 emit_log rows — 192 settled (101W 35V 56L = 61.7%), 200 pending (old DNB policy).
+Old pending picks (DNB for strong/standard) will continue to settle correctly.
+New picks fire V3 markets from this session forward.
+DB: 31,990 fixtures (28,801 settled, 3,189 upcoming).
+Session 10: V3 policy deployed. static_policy.py → V3_ACTIVE. routes_picks.py → V3 markets.
+settle.py → handles goals_nl, corners_nl, dnb, alpha_win.
 
 ## Key files
 
@@ -38,17 +44,23 @@ Session 9: Full pipeline live. settlement working. Goals NL effective-line fallb
 
 ## Decisions made
 
-- Picks fire from live `compute_foundation()` — not hardcoded stone policy
-- Analysis tab calls `/api/foundation` with ALL/T1/T2+T3 sub-tabs
-- Goals NL uses effective-line fallback: natural line → over 2.5 → over 3.5 → over 1.5 (first quoted odd wins)
-- Goals NL pick label matches quoted line (e.g. "Over 2.5 Goals") — settle.py parses label via regex
-- write_emit_log() supersedes stale unsettled picks when alpha team label changes (prevents duplicate pairs)
-- Inspector/reports use live `compute_foundation()` — not static `PROMOTED_CELLS`
-- Low zone suppressed (MEASURING) — accumulating data
-- `fetch_upcoming.py` stores full kickoff datetimes ("2026-05-23 21:00:00"), not date-only; start window = TODAY
-- fetch_upcoming.py uses monthly windows for July–Oct (max_pages=30) to avoid 1,000-fixture page cap
-- Single SQLite DB — no external DB services
-- `fixtures.league_id` stores internal DB leagues.id (resolved via `_league_id_map`)
+- **V3 policy (2026-05-25):** Picks fire from static_policy.V3_ACTIVE — not compute_foundation().
+  compute_foundation() still runs for /foundation analysis view only.
+- 9 active cells: strong×{slight_over,slight_under}→goals_nl Over 1.5;
+  standard×{slight_over,strong_over,slight_under}→goals_nl Over 1.5 + corners_nl Over 8.5;
+  low×{slight_over,slight_under}→dnb; one_sided×{slight_over,slight_under}→alpha_win.
+- Low zone ACTIVATED — LOW_ZONE_SUPPRESS=False. Validated: 84.9%/91.6% hit rates.
+- Goals NL uses natural line only (Over 1.5 for strong/standard) — no effective-line fallback.
+- Goals NL pick label: "Over 1.5 Goals" — settle.py parses via regex.
+- Corners NL pick label: "Over 8.5 Corners" — settle.py parses via regex.
+- settle.py LEFT JOINs fixture_stats for corners_nl settlement.
+- Inspector/reports PROMOTED_CELLS fallback updated to V3 values (9 cells).
+- Drift tracking is per (zone, bts, market) — corners_nl starts at no_data.
+- Analysis tab calls /api/foundation with ALL/T1/T2+T3 sub-tabs (compute_foundation for display).
+- write_emit_log() supersedes stale unsettled picks when alpha team label changes.
+- fetch_upcoming.py stores full kickoff datetimes; monthly windows July–Oct (max_pages=30).
+- Single SQLite DB — no external DB services.
+- fixtures.league_id stores internal DB leagues.id (resolved via _league_id_map).
 
 ## Next steps
 
@@ -61,8 +73,8 @@ Or run `.\run_daily.ps1` for all three steps + heartbeat in sequence.
 
 **Pending:**
 - Register cron: run `setup_scheduler.ps1` as Admin (one-time)
-- EV analysis for goals_nl markets: compare gs_hit (54–65%) vs Over 2.5 market price
-- 3 drifting cells to monitor: one_sided:slight_over, standard:strong_over, strong:slight_over
+- Monitor V3 corners_nl picks settling over first 2 weeks (drift starts at no_data)
+- Project 2 (calibration) — stake sizing per cell based on validated hit rates
 
 ## Reference documents
 

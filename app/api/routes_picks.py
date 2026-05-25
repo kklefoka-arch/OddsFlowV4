@@ -1,8 +1,11 @@
 """OddsFlow V4 — Picks endpoint.
 
-Picks fire from the live V3 Foundation Matrix (compute_foundation), not a
-hardcoded stone policy. Market is derived from zone: DNB for strong/standard,
-Alpha Win for one_sided. Low zone is suppressed (MEASURING).
+Picks fire from the V3 static policy (static_policy.V3_ACTIVE).
+Markets per zone:
+  strong    → goals_nl (Over 1.5)
+  standard  → goals_nl (Over 1.5) + corners_nl (Over 8.5)
+  low       → dnb  [activated — LOW_ZONE_SUPPRESS=False]
+  one_sided → alpha_win
 """
 
 from __future__ import annotations
@@ -16,21 +19,12 @@ from fastapi import APIRouter, Query
 
 from app.db.database import get_conn
 from app.engine.classify import classify_fixture
-from app.engine.foundation import load_foundation
-from app.engine.promotion import compute_foundation, PROMOTE, PROMOTE_TOLERANCE
-from app.engine.natural_lines import natural_line
+from app.engine.static_policy import V3_ACTIVE
 from app.settings import settings
 
 router = APIRouter(tags=["picks"])
 
 DRIFT_MIN_N = 10
-
-# Zone → market mapping. Low zone is excluded (MEASURING).
-_ZONE_MARKET: dict[str, str] = {
-    "strong":    "dnb",
-    "standard":  "dnb",
-    "one_sided": "alpha_win",
-}
 
 
 # ---------------------------------------------------------------------------
@@ -89,27 +83,28 @@ def make_pick_uuid(fixture_id: int, market: str, pick: str) -> str:
 
 
 def _compute_cell_drift(conn: sqlite3.Connection, zone: str, bts: str,
-                         historical_pct: float, recent_days: int = 30) -> dict[str, Any]:
+                         market: str, historical_pct: float,
+                         recent_days: int = 30) -> dict[str, Any]:
     cutoff = (datetime.now(tz=timezone.utc) - timedelta(days=recent_days)).strftime("%Y-%m-%d %H:%M:%S")
     rows = conn.execute(
         """
-        SELECT em.market,
+        SELECT em.market, em.pick,
                f.home_score, f.away_score, f.home_odd, f.away_odd
         FROM emit_log em
         JOIN fixtures f ON f.id = em.fixture_id
-        WHERE em.zone = ? AND em.bts_pocket = ?
+        WHERE em.zone = ? AND em.bts_pocket = ? AND em.market = ?
           AND em.emitted_at >= ?
           AND f.home_score IS NOT NULL AND f.away_score IS NOT NULL
           AND f.home_odd IS NOT NULL AND f.away_odd IS NOT NULL
         """,
-        (zone, bts, cutoff),
+        (zone, bts, market, cutoff),
     ).fetchall()
 
     hits = 0.0
     n = 0
     for r in rows:
         outcome = settle_pick(r["market"], r["home_score"], r["away_score"],
-                              r["home_odd"], r["away_odd"])
+                              r["home_odd"], r["away_odd"], r["pick"])
         if outcome is not None:
             hits += outcome
             n += 1
@@ -136,8 +131,7 @@ def write_emit_log(conn: sqlite3.Connection, emit_rows: list[dict]) -> dict[str,
 
     - If the row already exists and pick_odd is NULL, backfill pick_odd.
     - If a different pick for the same (fixture_id, market) exists without a
-      pick_results row, supersede it: delete the stale row first, then insert
-      the new one. This handles alpha-team flips between fetch runs.
+      pick_results row, supersede it: delete the stale row first, then insert.
     """
     now_sql = datetime.now(tz=timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
     new_count = 0
@@ -145,8 +139,6 @@ def write_emit_log(conn: sqlite3.Connection, emit_rows: list[dict]) -> dict[str,
     updated_count = 0
     for p in emit_rows:
         uuid = make_pick_uuid(p["fixture_id"], p["market"], p["pick"])
-        # Supersede stale pick for same (fixture, market) if pick label changed
-        # and the stale row has no settlement record.
         conn.execute(
             """
             DELETE FROM emit_log
@@ -178,7 +170,6 @@ def write_emit_log(conn: sqlite3.Connection, emit_rows: list[dict]) -> dict[str,
         if result.rowcount > 0:
             new_count += 1
         else:
-            # Row exists — backfill pick_odd if it was NULL and we now have a value
             if p.get("pick_odd") is not None:
                 upd = conn.execute(
                     "UPDATE emit_log SET pick_odd = ? WHERE pick_uuid = ? AND pick_odd IS NULL",
@@ -200,35 +191,20 @@ def write_emit_log(conn: sqlite3.Connection, emit_rows: list[dict]) -> dict[str,
 
 @router.get("/picks")
 def picks(days: int = Query(3, ge=1, le=14)) -> dict[str, Any]:
-    """Emit picks for upcoming fixtures in live promoted cells."""
+    """Emit picks for upcoming fixtures in V3 active cells."""
     now = datetime.now(tz=timezone.utc)
     today = now.strftime("%Y-%m-%d")
     horizon = (now + timedelta(days=days)).strftime("%Y-%m-%d")
 
     conn = get_conn(settings.sqlite_path)
     try:
-        # --- Build live promoted cell set from V3 Foundation Matrix ---
-        foundation_rows = load_foundation(conn)
-        foundation = compute_foundation(foundation_rows)
-
-        promoted: dict[tuple[str, str], dict[str, Any]] = {}
-        promoted_goals: dict[tuple[str, str], dict[str, Any]] = {}
-        for cell in foundation["all"]:
-            if cell["zone"] == "low":
-                continue
-            key = (cell["zone"], cell["bts_pocket"])
-            if cell["threeway_promote"] in (PROMOTE, PROMOTE_TOLERANCE):
-                promoted.setdefault(key, cell)
-            if cell["goals_promote"] in (PROMOTE, PROMOTE_TOLERANCE):
-                promoted_goals.setdefault(key, cell)
-
-        # --- Fetch upcoming fixtures in window ---
         rows = conn.execute(
             """
             SELECT f.id, f.date, f.tier,
                    f.home_odd, f.draw_odd, f.away_odd,
                    f.btts_yes_odd, f.btts_no_odd,
-                   f.goals_over_15_odd, f.goals_over_25_odd, f.goals_over_35_odd,
+                   f.goals_over_15_odd,
+                   f.corners_over_85_odd,
                    ht.name AS home_team, at2.name AS away_team,
                    lg.name AS league, lg.country, lg.tier AS league_tier
             FROM fixtures f
@@ -243,7 +219,7 @@ def picks(days: int = Query(3, ge=1, le=14)) -> dict[str, Any]:
             (today, horizon),
         ).fetchall()
 
-        drift_cache: dict[tuple[str, str], dict[str, Any]] = {}
+        drift_cache: dict[tuple[str, str, str], dict[str, Any]] = {}
         picks_out: list[dict[str, Any]] = []
         emit_rows: list[dict[str, Any]] = []
         skip_reasons = {"unclassifiable": 0, "partition_not_promoted": 0}
@@ -252,13 +228,18 @@ def picks(days: int = Query(3, ge=1, le=14)) -> dict[str, Any]:
             d = dict(row)
             clf = classify_fixture(d)
             zone = clf.get("zone")
-            bts = clf.get("bts_pocket")
+            bts  = clf.get("bts_pocket")
 
             if zone is None or bts is None:
                 skip_reasons["unclassifiable"] += 1
                 continue
 
-            tier = d.get("league_tier") or d.get("tier")
+            cell_markets = V3_ACTIVE.get((zone, bts))
+            if cell_markets is None:
+                skip_reasons["partition_not_promoted"] += 1
+                continue
+
+            tier     = d.get("league_tier") or d.get("tier")
             home_odd = d.get("home_odd")
             away_odd = d.get("away_odd")
             draw_odd = d.get("draw_odd")
@@ -266,53 +247,70 @@ def picks(days: int = Query(3, ge=1, le=14)) -> dict[str, Any]:
             alpha_team = (d.get("home_team") or "") if alpha_home else (d.get("away_team") or "")
             emitted_any = False
 
-            # --- Threeway pick (DNB / Alpha Win) ---
-            cell = promoted.get((zone, bts))
-            market = _ZONE_MARKET.get(zone)
-            if cell is not None and market is not None:
-                drift_key = (zone, bts)
+            for market, mkt_cfg in cell_markets.items():
+                drift_key = (zone, bts, market)
                 if drift_key not in drift_cache:
                     try:
                         drift_cache[drift_key] = _compute_cell_drift(
-                            conn, zone, bts, cell["threeway_hit"]
+                            conn, zone, bts, market, mkt_cfg["hit"]
                         )
                     except Exception:
                         drift_cache[drift_key] = {
-                            "flag": None, "gap_pp": None, "recent_n": None, "recent_hit": None
+                            "flag": None, "gap_pp": None,
+                            "recent_n": None, "recent_hit": None,
                         }
                 drift = drift_cache[drift_key]
 
-                if market == "dnb":
+                # ── build pick label and odd ──────────────────────────────
+                if market == "goals_nl":
+                    line     = mkt_cfg["line"]
+                    odd_col  = mkt_cfg["odd_col"]
+                    pick_label = f"Over {line} Goals"
+                    pick_odd   = d.get(odd_col) if odd_col else None
+                    derived    = False
+
+                elif market == "corners_nl":
+                    line     = mkt_cfg["line"]
+                    odd_col  = mkt_cfg["odd_col"]
+                    pick_label = f"Over {line} Corners"
+                    pick_odd   = d.get(odd_col) if odd_col else None
+                    derived    = False
+
+                elif market == "dnb":
                     pick_label = alpha_team
                     pick_odd, derived = _derive_dnb_odd(home_odd, draw_odd, away_odd)
-                else:  # alpha_win
+
+                elif market == "alpha_win":
                     pick_label = alpha_team
-                    pick_odd = round(min(home_odd, away_odd), 3) if (home_odd and away_odd) else None
-                    derived = False
+                    pick_odd   = round(min(home_odd, away_odd), 3) if (home_odd and away_odd) else None
+                    derived    = False
+
+                else:
+                    continue
 
                 picks_out.append({
-                    "fixture_id":              d["id"],
-                    "kickoff_utc":             d["date"],
-                    "home_team":               d.get("home_team") or "",
-                    "away_team":               d.get("away_team") or "",
-                    "league":                  d.get("league") or "",
-                    "country":                 d.get("country") or "",
-                    "tier":                    tier,
-                    "market":                  market,
-                    "pick":                    pick_label,
-                    "line":                    None,
-                    "pick_leg":                None,
-                    "pick_odd":                pick_odd,
-                    "pick_odd_derived":        derived,
-                    "pick_class":              "promote",
-                    "partition_key":           f"{zone}:{bts}",
-                    "draw_zone":               zone,
-                    "cell_drift_flag":         drift["flag"],
-                    "cell_drift_gap_pp":       drift["gap_pp"],
-                    "cell_drift_recent_n":     drift["recent_n"],
-                    "cell_historical_hit":     cell["threeway_hit"],
-                    "cell_historical_n":       cell["n_fixtures"],
-                    "asian_alternative":       None,
+                    "fixture_id":               d["id"],
+                    "kickoff_utc":              d["date"],
+                    "home_team":                d.get("home_team") or "",
+                    "away_team":                d.get("away_team") or "",
+                    "league":                   d.get("league") or "",
+                    "country":                  d.get("country") or "",
+                    "tier":                     tier,
+                    "market":                   market,
+                    "pick":                     pick_label,
+                    "line":                     mkt_cfg.get("line"),
+                    "pick_leg":                 None,
+                    "pick_odd":                 pick_odd,
+                    "pick_odd_derived":         derived,
+                    "pick_class":               "promote",
+                    "partition_key":            f"{zone}:{bts}",
+                    "draw_zone":                zone,
+                    "cell_drift_flag":          drift["flag"],
+                    "cell_drift_gap_pp":        drift["gap_pp"],
+                    "cell_drift_recent_n":      drift["recent_n"],
+                    "cell_historical_hit":      mkt_cfg["hit"],
+                    "cell_historical_n":        mkt_cfg["n"],
+                    "asian_alternative":        None,
                     "asian_corners_alternative": None,
                 })
                 emit_rows.append({
@@ -323,63 +321,7 @@ def picks(days: int = Query(3, ge=1, le=14)) -> dict[str, Any]:
                     "market":     market,
                     "pick":       pick_label,
                     "pick_odd":   pick_odd,
-                    "confidence": round(cell["threeway_hit"] / 100, 4),
-                })
-                emitted_any = True
-
-            # --- Goals natural line pick ---
-            goals_cell = promoted_goals.get((zone, bts))
-            if goals_cell is not None:
-                _goals_odd_col = {1.5: "goals_over_15_odd", 2.5: "goals_over_25_odd", 3.5: "goals_over_35_odd"}
-                # Determine effective line: use natural line if its odd is available,
-                # otherwise step up until we find one that is quoted.
-                natural = natural_line(zone, "goals")
-                effective_line = natural
-                goals_pick_odd = d.get(_goals_odd_col.get(natural, ""))
-                if goals_pick_odd is None:
-                    for fallback in [2.5, 3.5, 1.5]:
-                        if fallback == natural:
-                            continue
-                        candidate = d.get(_goals_odd_col.get(fallback, ""))
-                        if candidate is not None:
-                            goals_pick_odd = candidate
-                            effective_line = fallback
-                            break
-                goals_pick = f"Over {effective_line} Goals"
-                picks_out.append({
-                    "fixture_id":              d["id"],
-                    "kickoff_utc":             d["date"],
-                    "home_team":               d.get("home_team") or "",
-                    "away_team":               d.get("away_team") or "",
-                    "league":                  d.get("league") or "",
-                    "country":                 d.get("country") or "",
-                    "tier":                    tier,
-                    "market":                  "goals_nl",
-                    "pick":                    goals_pick,
-                    "line":                    effective_line,
-                    "pick_leg":                None,
-                    "pick_odd":                goals_pick_odd,
-                    "pick_odd_derived":        False,
-                    "pick_class":              "promote",
-                    "partition_key":           f"{zone}:{bts}",
-                    "draw_zone":               zone,
-                    "cell_drift_flag":         None,
-                    "cell_drift_gap_pp":       None,
-                    "cell_drift_recent_n":     None,
-                    "cell_historical_hit":     goals_cell["gn_hit"],
-                    "cell_historical_n":       goals_cell["n_fixtures"],
-                    "asian_alternative":       None,
-                    "asian_corners_alternative": None,
-                })
-                emit_rows.append({
-                    "fixture_id": d["id"],
-                    "zone":       zone,
-                    "bts_pocket": bts,
-                    "tier":       tier,
-                    "market":     "goals_nl",
-                    "pick":       goals_pick,
-                    "pick_odd":   goals_pick_odd,
-                    "confidence": round(goals_cell["gn_hit"] / 100, 4),
+                    "confidence": round(mkt_cfg["hit"] / 100, 4),
                 })
                 emitted_any = True
 
