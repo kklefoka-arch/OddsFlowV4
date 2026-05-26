@@ -79,7 +79,8 @@ Total settled all-time: 228 (123W/64L/41V). Live picks via API: 39.
 Or run `.\run_daily.ps1` for all three steps + heartbeat in sequence.
 
 **Pending:**
-- Register cron: run `setup_scheduler.ps1` as Admin (one-time)
+- Scheduler ACTIVE (2026-05-26): 5 Windows Task Scheduler jobs registered.
+  08:00 FetchUpcoming | 23:30 FetchResults | 23:45 Settle | 03:00 FetchResults_SA | 03:15 Settle_SA
 - Monitor V3 corners_nl picks settling over first 2 weeks (drift starts at no_data)
 - Project 2 calibration COMPLETE (2026-05-26):
   - parameter_set.json at `C:\OddsFlow AI Website\Output\CALIBRATION_PARAMETER_SET_2026-05-26.json`
