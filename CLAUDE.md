@@ -31,6 +31,9 @@ Session 11: Server restart fixed (Windows --reload not working; killed + restart
 Low zone DNB picks confirmed firing. First V3 settlement: 36 picks — 22W 8L 6V.
 goals_nl 85.7% (12/14), corners_nl 87.5% (7/8), DNB 6 voids (draws, stakes returned).
 177 picks across 120 fixtures live. 3,174 upcoming fixtures refreshed.
+Session 12: Daily pipeline run (no new results — non-match day). 253 pending picks.
+Project 2 calibration complete. Breakeven odds documented per cell. alpha_win T1 = HOLD (EV+).
+Total settled all-time: 228 (123W/64L/41V). Live picks via API: 39.
 
 ## Key files
 
@@ -78,7 +81,13 @@ Or run `.\run_daily.ps1` for all three steps + heartbeat in sequence.
 **Pending:**
 - Register cron: run `setup_scheduler.ps1` as Admin (one-time)
 - Monitor V3 corners_nl picks settling over first 2 weeks (drift starts at no_data)
-- Project 2 (calibration) — stake sizing per cell based on validated hit rates
+- Project 2 calibration COMPLETE (2026-05-26):
+  - parameter_set.json at `C:\OddsFlow AI Website\Output\CALIBRATION_PARAMETER_SET_2026-05-26.json`
+  - All V3 goals_nl/corners_nl cells NON_PROMOTE at avg market odds
+  - alpha_win T1 = HOLD (+0.007 to +0.010 EV) — only EV-positive cells
+  - KEY METRIC: breakeven_odds per cell — any live price above this = EV+ bet
+  - Edge source confirmed: price comparison across bookmakers, not avg-odds betting
+- Project 3: live odds comparison layer (bookmaker price vs breakeven_odds per cell)
 
 ## Reference documents
 
