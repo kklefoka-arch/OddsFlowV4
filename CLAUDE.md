@@ -27,6 +27,10 @@ New picks fire V3 markets from this session forward.
 DB: 31,990 fixtures (28,801 settled, 3,189 upcoming).
 Session 10: V3 policy deployed. static_policy.py → V3_ACTIVE. routes_picks.py → V3 markets.
 settle.py → handles goals_nl, corners_nl, dnb, alpha_win.
+Session 11: Server restart fixed (Windows --reload not working; killed + restarted process).
+Low zone DNB picks confirmed firing. First V3 settlement: 36 picks — 22W 8L 6V.
+goals_nl 85.7% (12/14), corners_nl 87.5% (7/8), DNB 6 voids (draws, stakes returned).
+177 picks across 120 fixtures live. 3,174 upcoming fixtures refreshed.
 
 ## Key files
 
