@@ -66,6 +66,7 @@ def _upcoming_fixtures(conn: Any) -> list[dict]:
         clf = classify_fixture(d)
         d["draw_zone"] = clf["zone"]
         d["bts_pocket"] = clf["bts_pocket"]
+        d["df_level"] = clf.get("df")
         result.append(d)
     return result
 

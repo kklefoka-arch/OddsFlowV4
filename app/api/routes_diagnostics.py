@@ -339,7 +339,7 @@ def drift_report() -> dict[str, Any]:
     now = datetime.now(tz=timezone.utc)
     partitions = [
         {
-            "partition_key": f"{r['zone']}:{r['bts_v2']}",
+            "partition_key": f"{r['zone']}:{r.get('df') or '-'}:{r['bts_v2']}",
             "class":         "promote",
             "n_current":     r["recent_n"],
             "edge_current":  None,

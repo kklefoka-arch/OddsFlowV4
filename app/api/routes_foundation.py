@@ -1,4 +1,7 @@
-"""OddsFlow V3 — Foundation Matrix routes."""
+"""OddsFlow V4 — Foundation Matrix routes.
+
+Hit rates per (zone × DF × BTS pocket) cell — V3.1 partition shape.
+"""
 
 from __future__ import annotations
 

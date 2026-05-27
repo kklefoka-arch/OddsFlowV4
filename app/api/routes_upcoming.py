@@ -43,16 +43,14 @@ def upcoming(
             except ValueError:
                 pass
 
+    # V3.1 (2026-05-28): use V3_ACTIVE stone policy directly (the authoritative
+    # promotion set), not a re-derivation from live data. Fixes M4 (Session 15
+    # process audit). See routes_reports.py for full rationale.
+    from app.engine.static_policy import V3_ACTIVE
+    promoted_keys: set[tuple[str, str, str]] = set(V3_ACTIVE.keys())
+
     conn = get_conn(settings.sqlite_path)
     try:
-        foundation_rows = load_foundation(conn)
-        foundation = compute_foundation(foundation_rows)
-        promoted_keys: set[tuple[str, str]] = {
-            (cell["zone"], cell["bts_pocket"])
-            for cell in foundation["all"]
-            if cell["threeway_promote"] in (PROMOTE, PROMOTE_TOLERANCE)
-            and cell["zone"] != "low"
-        }
 
         rows = conn.execute(
             f"""
@@ -85,8 +83,9 @@ def upcoming(
         d = dict(row)
         clf = classify_fixture(d)
         zone = clf.get("zone")
+        df = clf.get("df")
         bts = clf.get("bts_pocket")
-        partition_promoted = bool(zone and bts and (zone, bts) in promoted_keys)
+        partition_promoted = bool(zone and df and bts and (zone, df, bts) in promoted_keys)
 
         tier_key = str(d.get("league_tier") or d.get("tier") or "")
         if tier_key:
@@ -109,6 +108,7 @@ def upcoming(
             "btts_yes_odd":    d.get("btts_yes_odd"),
             "btts_no_odd":     d.get("btts_no_odd"),
             "zone_group":      zone or "—",
+            "df":              df or "—",
             "bts_v2":          bts or "—",
             "partition_promoted": partition_promoted,
         })

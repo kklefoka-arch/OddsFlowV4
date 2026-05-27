@@ -1,4 +1,4 @@
-"""OddsFlow V3 — Health check route."""
+"""OddsFlow V4 — Health check route."""
 
 from __future__ import annotations
 
@@ -14,4 +14,4 @@ async def health() -> dict[str, str]:
     Returns:
         JSON object with ``status`` and ``version`` fields.
     """
-    return {"status": "ok", "version": "3.0.0"}
+    return {"status": "ok", "version": "4.1.0"}

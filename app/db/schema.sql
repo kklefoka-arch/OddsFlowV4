@@ -42,6 +42,7 @@ CREATE TABLE IF NOT EXISTS fixtures (
     -- classification (computed on insert)
     draw_zone   TEXT,
     bts_pocket  TEXT,
+    df_level    TEXT,  -- V3.1 (2026-05-27): DF0 | DF1 | DF2
     -- results (filled when settled)
     home_score   INTEGER,
     away_score   INTEGER,
@@ -84,6 +85,7 @@ CREATE TABLE IF NOT EXISTS emit_log (
     emitted_at      TEXT DEFAULT (datetime('now')),
     fixture_id      INTEGER REFERENCES fixtures(id),
     zone            TEXT,
+    df_level        TEXT,  -- V3.1 (2026-05-27): DF0 | DF1 | DF2
     bts_pocket      TEXT,
     tier            INTEGER,
     market          TEXT,

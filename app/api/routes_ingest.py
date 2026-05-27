@@ -144,12 +144,15 @@ async def add_fixture(payload: FixtureAddPayload) -> dict:
         "draw_odd": payload.draw_odd,
         "btts_yes_odd": payload.btts_yes_odd,
         "btts_no_odd": payload.btts_no_odd,
+        "home_odd": payload.home_odd,
+        "away_odd": payload.away_odd,
         "tier": payload.tier,
     })
     return {
         "fixture_id": fixture_id,
         "status": "scheduled",
         "draw_zone": clf["zone"],
+        "df_level": clf.get("df"),
         "bts_pocket": clf["bts_pocket"],
     }
 

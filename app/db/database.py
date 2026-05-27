@@ -43,6 +43,9 @@ def _run_migrations(conn: sqlite3.Connection) -> None:
         # emit_log additions for V4
         "ALTER TABLE emit_log ADD COLUMN partition_key TEXT",
         "ALTER TABLE emit_log ADD COLUMN strategy      TEXT",
+        # V3.1 (2026-05-27) — DF-aware partition
+        "ALTER TABLE fixtures ADD COLUMN df_level TEXT",
+        "ALTER TABLE emit_log ADD COLUMN df_level TEXT",
         # system_health table (if not in schema.sql)
         # pick_results outcome column (ensure it exists)
     ]

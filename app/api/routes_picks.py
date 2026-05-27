@@ -82,7 +82,7 @@ def make_pick_uuid(fixture_id: int, market: str, pick: str) -> str:
     return hashlib.sha256(f"{fixture_id}:{market}:{pick}".encode()).hexdigest()[:36]
 
 
-def _compute_cell_drift(conn: sqlite3.Connection, zone: str, bts: str,
+def _compute_cell_drift(conn: sqlite3.Connection, zone: str, df: str, bts: str,
                          market: str, historical_pct: float,
                          recent_days: int = 30) -> dict[str, Any]:
     cutoff = (datetime.now(tz=timezone.utc) - timedelta(days=recent_days)).strftime("%Y-%m-%d %H:%M:%S")
@@ -92,12 +92,12 @@ def _compute_cell_drift(conn: sqlite3.Connection, zone: str, bts: str,
                f.home_score, f.away_score, f.home_odd, f.away_odd
         FROM emit_log em
         JOIN fixtures f ON f.id = em.fixture_id
-        WHERE em.zone = ? AND em.bts_pocket = ? AND em.market = ?
+        WHERE em.zone = ? AND em.df_level = ? AND em.bts_pocket = ? AND em.market = ?
           AND em.emitted_at >= ?
           AND f.home_score IS NOT NULL AND f.away_score IS NOT NULL
           AND f.home_odd IS NOT NULL AND f.away_odd IS NOT NULL
         """,
-        (zone, bts, market, cutoff),
+        (zone, df, bts, market, cutoff),
     ).fetchall()
 
     hits = 0.0
@@ -150,15 +150,16 @@ def write_emit_log(conn: sqlite3.Connection, emit_rows: list[dict]) -> dict[str,
         result = conn.execute(
             """
             INSERT OR IGNORE INTO emit_log
-              (pick_uuid, emitted_at, fixture_id, zone, bts_pocket, tier,
+              (pick_uuid, emitted_at, fixture_id, zone, df_level, bts_pocket, tier,
                market, pick, pick_odd, confidence)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 uuid,
                 now_sql,
                 p["fixture_id"],
                 p["zone"],
+                p.get("df"),
                 p["bts_pocket"],
                 p.get("tier"),
                 p["market"],
@@ -228,13 +229,14 @@ def picks(days: int = Query(3, ge=1, le=14)) -> dict[str, Any]:
             d = dict(row)
             clf = classify_fixture(d)
             zone = clf.get("zone")
+            df   = clf.get("df")
             bts  = clf.get("bts_pocket")
 
-            if zone is None or bts is None:
+            if zone is None or df is None or bts is None:
                 skip_reasons["unclassifiable"] += 1
                 continue
 
-            cell_markets = V3_ACTIVE.get((zone, bts))
+            cell_markets = V3_ACTIVE.get((zone, df, bts))
             if cell_markets is None:
                 skip_reasons["partition_not_promoted"] += 1
                 continue
@@ -248,11 +250,11 @@ def picks(days: int = Query(3, ge=1, le=14)) -> dict[str, Any]:
             emitted_any = False
 
             for market, mkt_cfg in cell_markets.items():
-                drift_key = (zone, bts, market)
+                drift_key = (zone, df, bts, market)
                 if drift_key not in drift_cache:
                     try:
                         drift_cache[drift_key] = _compute_cell_drift(
-                            conn, zone, bts, market, mkt_cfg["hit"]
+                            conn, zone, df, bts, market, mkt_cfg["hit"]
                         )
                     except Exception:
                         drift_cache[drift_key] = {
@@ -303,8 +305,10 @@ def picks(days: int = Query(3, ge=1, le=14)) -> dict[str, Any]:
                     "pick_odd":                 pick_odd,
                     "pick_odd_derived":         derived,
                     "pick_class":               "promote",
-                    "partition_key":            f"{zone}:{bts}",
+                    "partition_key":            f"{zone}:{df}:{bts}",
                     "draw_zone":                zone,
+                    "df":                       df,
+                    "bts_pocket":               bts,
                     "cell_drift_flag":          drift["flag"],
                     "cell_drift_gap_pp":        drift["gap_pp"],
                     "cell_drift_recent_n":      drift["recent_n"],
@@ -316,6 +320,7 @@ def picks(days: int = Query(3, ge=1, le=14)) -> dict[str, Any]:
                 emit_rows.append({
                     "fixture_id": d["id"],
                     "zone":       zone,
+                    "df":         df,
                     "bts_pocket": bts,
                     "tier":       tier,
                     "market":     market,
@@ -353,20 +358,4 @@ def picks(days: int = Query(3, ge=1, le=14)) -> dict[str, Any]:
     }
 
 
-@router.get("/picks/prx9")
-def picks_prx9(
-    days: int = Query(3, ge=1, le=14),
-    min_rank: int = Query(4, ge=2, le=8),
-    combo_size: int = Query(5, ge=3, le=15),
-) -> dict[str, Any]:
-    """PRX9 is retired in V4. Returns empty."""
-    return {
-        "count": 0,
-        "window_days": days,
-        "min_rank_filter": min_rank,
-        "as_of": datetime.now(tz=timezone.utc).isoformat(),
-        "signal_bounds": {},
-        "emit_log": {"new": 0, "skip": 0},
-        "picks": [],
-        "system_combinations": [],
-    }
+# /picks/prx9 retired in V3.1 (2026-05-28) — dead route removed (no frontend caller).
