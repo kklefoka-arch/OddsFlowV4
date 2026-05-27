@@ -80,14 +80,20 @@ def _write_and_settle(
     settled_n = 0
     if written:
         pending = conn.execute("""
-            SELECT em.pick_uuid, em.market, f.home_odd, f.away_odd
-            FROM emit_log em JOIN fixtures f ON f.id = em.fixture_id
+            SELECT em.pick_uuid, em.market, em.pick,
+                   f.home_odd, f.away_odd,
+                   fs.total_corners
+            FROM emit_log em
+            JOIN fixtures f ON f.id = em.fixture_id
+            LEFT JOIN fixture_stats fs ON fs.fixture_id = f.id
             WHERE em.fixture_id = ?
               AND NOT EXISTS (SELECT 1 FROM pick_results pr WHERE pr.pick_uuid = em.pick_uuid)
         """, (fixture_db_id,)).fetchall()
         for row in pending:
+            # V3.1 (2026-05-28): pass pick + total_corners for corners_nl.
             val = settle_pick(row["market"], home_score, away_score,
-                              row["home_odd"], row["away_odd"])
+                              row["home_odd"], row["away_odd"],
+                              row["pick"] or "", total_corners=row["total_corners"])
             if val is None:
                 continue
             lbl = "WIN" if val == 1.0 else "VOID" if val == 0.5 else "LOSS"

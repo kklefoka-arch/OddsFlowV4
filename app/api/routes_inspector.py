@@ -73,24 +73,27 @@ def compute_drift_rows(
     recent_rows = conn.execute(
         """
         SELECT em.zone, em.df_level, em.bts_pocket, em.market, em.pick,
-               f.home_score, f.away_score, f.home_odd, f.away_odd
+               f.home_score, f.away_score, f.home_odd, f.away_odd,
+               fs.total_corners
         FROM emit_log em
         JOIN fixtures f ON f.id = em.fixture_id
+        LEFT JOIN fixture_stats fs ON fs.fixture_id = f.id
         WHERE em.emitted_at >= ?
           AND f.home_score IS NOT NULL AND f.away_score IS NOT NULL
         """,
         (cutoff,),
     ).fetchall()
 
-    # V3.1 (2026-05-28): non-loss hit rate (matches static_policy convention —
-    # voids count as 1, not 0.5). Wilson removed per operator decision.
+    # V3.1 (2026-05-28): non-loss hit rate (voids count as 1, matches V3
+    # baseline). corners_nl needs total_corners from fixture_stats join.
     recent: dict[tuple[str, str, str], dict[str, int]] = {}
     for r in recent_rows:
         key = (r["zone"], r["df_level"], r["bts_pocket"])
         if key not in live_promoted:
             continue
         h = is_hit(settle_pick(r["market"], r["home_score"], r["away_score"],
-                                r["home_odd"], r["away_odd"], r["pick"]))
+                                r["home_odd"], r["away_odd"], r["pick"],
+                                total_corners=r["total_corners"]))
         if h is None:
             continue
         if key not in recent:

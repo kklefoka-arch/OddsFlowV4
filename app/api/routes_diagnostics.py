@@ -124,9 +124,12 @@ def today_summary() -> dict[str, Any]:
         from app.api.routes_picks import settle_pick
         cutoff_180 = (now - timedelta(days=180)).strftime("%Y-%m-%d %H:%M:%S")
         emit_rows = conn.execute(
-            """SELECT em.emitted_at, em.fixture_id, em.market,
-                      f.home_score, f.away_score, f.home_odd, f.away_odd
-               FROM emit_log em JOIN fixtures f ON f.id = em.fixture_id
+            """SELECT em.emitted_at, em.fixture_id, em.market, em.pick,
+                      f.home_score, f.away_score, f.home_odd, f.away_odd,
+                      fs.total_corners
+               FROM emit_log em
+               JOIN fixtures f ON f.id = em.fixture_id
+               LEFT JOIN fixture_stats fs ON fs.fixture_id = f.id
                WHERE em.emitted_at >= ?""",
             (cutoff_180,),
         ).fetchall()
@@ -139,8 +142,10 @@ def today_summary() -> dict[str, Any]:
                     at = at.replace(tzinfo=timezone.utc)
             except ValueError:
                 continue
+            # V3.1 (2026-05-28): pass pick + total_corners so corners_nl settles.
             outcome = settle_pick(r["market"], r["home_score"], r["away_score"],
-                                   r["home_odd"], r["away_odd"])
+                                   r["home_odd"], r["away_odd"],
+                                   r["pick"] or "", total_corners=r["total_corners"])
             legs.append((at, r["fixture_id"], r["market"], outcome))
 
         def _window_stats(days_back: int) -> dict:

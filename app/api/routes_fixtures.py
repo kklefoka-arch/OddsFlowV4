@@ -206,11 +206,21 @@ async def settle_fixture(fixture_id: int, payload: SettlePayload) -> dict:
             ).fetchone()
             home_o = dict(odds_row).get("home_odd") if odds_row else None
             away_o = dict(odds_row).get("away_odd") if odds_row else None
+            # V3.1 (2026-05-28): pass pick + total_corners (from payload if
+            # operator supplied it, else from fixture_stats which we just upserted).
+            corners_total = total_corners
+            if corners_total is None:
+                fs_row = conn.execute(
+                    "SELECT total_corners FROM fixture_stats WHERE fixture_id = ?",
+                    (fixture_id,),
+                ).fetchone()
+                corners_total = fs_row["total_corners"] if fs_row else None
             for er in emit_rows:
                 outcome_val = settle_pick(
                     er["market"],
                     payload.home_score, payload.away_score,
                     home_o, away_o,
+                    er["pick"] or "", total_corners=corners_total,
                 )
                 if outcome_val is None:
                     continue

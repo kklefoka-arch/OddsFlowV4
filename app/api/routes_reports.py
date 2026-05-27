@@ -53,9 +53,11 @@ def emit_performance(
         rows = conn.execute(
             f"""
             SELECT em.emitted_at, em.fixture_id, em.market, em.pick,
-                   f.home_score, f.away_score, f.home_odd, f.away_odd
+                   f.home_score, f.away_score, f.home_odd, f.away_odd,
+                   fs.total_corners
             FROM emit_log em
             JOIN fixtures f ON f.id = em.fixture_id
+            LEFT JOIN fixture_stats fs ON fs.fixture_id = f.id
             LEFT JOIN leagues lg ON lg.id = f.league_id
             WHERE em.emitted_at >= ?{tier_clause}
             """,
@@ -72,8 +74,10 @@ def emit_performance(
                 emitted_at = emitted_at.replace(tzinfo=timezone.utc)
         except ValueError:
             continue
+        # V3.1 (2026-05-28): pass total_corners so corners_nl picks settle.
         outcome = settle_pick(r["market"], r["home_score"], r["away_score"],
-                               r["home_odd"], r["away_odd"], r["pick"])
+                               r["home_odd"], r["away_odd"], r["pick"],
+                               total_corners=r["total_corners"])
         legs.append((emitted_at, r["fixture_id"], r["market"], r["pick"], outcome))
 
     windows_out = []
@@ -160,10 +164,12 @@ def emit_recent(
                    f.date AS kickoff_utc,
                    f.home_score, f.away_score, f.home_odd, f.away_odd,
                    f.btts_yes_odd, f.btts_no_odd,
+                   fs.home_corners, fs.away_corners, fs.total_corners,
                    lg.name AS league_name, lg.country, lg.tier,
                    th.name AS home_team, ta.name AS away_team
             FROM emit_log em
             JOIN fixtures f ON f.id = em.fixture_id
+            LEFT JOIN fixture_stats fs ON fs.fixture_id = f.id
             LEFT JOIN leagues lg ON lg.id = f.league_id
             LEFT JOIN teams th ON th.id = f.home_team_id
             LEFT JOIN teams ta ON ta.id = f.away_team_id
@@ -196,14 +202,15 @@ def emit_recent(
             "away_team":    r["away_team"],
             "home_score":   r["home_score"],
             "away_score":   r["away_score"],
-            "home_corners": None,
-            "away_corners": None,
+            "home_corners": r["home_corners"],
+            "away_corners": r["away_corners"],
             "partition_key": pk,
             "legs": [],
             "totals": {"wins": 0, "voids": 0, "losses": 0, "pending": 0},
         })
         outcome = settle_pick(r["market"], r["home_score"], r["away_score"],
-                               r["home_odd"], r["away_odd"], r["pick"])
+                               r["home_odd"], r["away_odd"], r["pick"],
+                               total_corners=r["total_corners"])
         lbl = ("PENDING" if outcome is None else
                "WIN" if outcome == 1.0 else
                "VOID" if outcome == 0.5 else "LOSS")
@@ -324,9 +331,11 @@ def emit_market_breakdown(
             f"""
             SELECT em.market, em.pick,
                    f.draw_odd, f.btts_yes_odd, f.btts_no_odd,
-                   f.home_score, f.away_score, f.home_odd, f.away_odd, f.df_level
+                   f.home_score, f.away_score, f.home_odd, f.away_odd, f.df_level,
+                   fs.total_corners
             FROM emit_log em
             JOIN fixtures f ON f.id = em.fixture_id
+            LEFT JOIN fixture_stats fs ON fs.fixture_id = f.id
             LEFT JOIN leagues lg ON lg.id = f.league_id
             WHERE em.emitted_at >= ?{tier_clause}
             """,
@@ -351,7 +360,8 @@ def emit_market_breakdown(
         if zone is None or bts is None or df is None:
             continue
         outcome = settle_pick(r["market"], r["home_score"], r["away_score"],
-                               r["home_odd"], r["away_odd"], r["pick"])
+                               r["home_odd"], r["away_odd"], r["pick"],
+                               total_corners=r["total_corners"])
         if outcome is None:
             continue
         key = (zone, df, bts, r["market"], r["pick"])

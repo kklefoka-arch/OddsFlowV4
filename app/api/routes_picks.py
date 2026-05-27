@@ -67,7 +67,8 @@ def is_hit(outcome: float | None) -> int | None:
 
 def settle_pick(market: str, home_score: int | None, away_score: int | None,
                 home_odd: float | None, away_odd: float | None,
-                pick: str = "") -> float | None:
+                pick: str = "",
+                total_corners: int | None = None) -> float | None:
     """Resolve a V4 pick against a settled fixture. Returns 1.0/0.5/0.0 or None.
 
     1.0 = win (stake returns full unit profit)
@@ -76,6 +77,11 @@ def settle_pick(market: str, home_score: int | None, away_score: int | None,
 
     For HIT-RATE display, pipe this through `is_hit()` instead of summing
     directly — V3 baselines treat voids as non-losses (hits), not 0.5.
+
+    Signature mirrors settle.py (the autonomous batch settler) so live read
+    paths and the cron settler resolve picks identically. corners_nl picks
+    return None when total_corners is missing (fixture_stats not populated
+    yet) — the daily settle.py retries on the next run when corners arrive.
     """
     import re as _re
     if home_score is None or away_score is None:
@@ -85,6 +91,13 @@ def settle_pick(market: str, home_score: int | None, away_score: int | None,
         if not m:
             return None
         return 1.0 if (home_score + away_score) > float(m.group(1)) else 0.0
+    if market == "corners_nl":
+        m = _re.match(r"Over (\d+\.5) Corners", pick or "")
+        if not m:
+            return None
+        if total_corners is None:
+            return None
+        return 1.0 if total_corners > float(m.group(1)) else 0.0
     if home_odd is None or away_odd is None:
         return None
     alpha_home = _alpha_is_home(home_odd, away_odd)
@@ -108,9 +121,11 @@ def _compute_cell_drift(conn: sqlite3.Connection, zone: str, df: str, bts: str,
     rows = conn.execute(
         """
         SELECT em.market, em.pick,
-               f.home_score, f.away_score, f.home_odd, f.away_odd
+               f.home_score, f.away_score, f.home_odd, f.away_odd,
+               fs.total_corners
         FROM emit_log em
         JOIN fixtures f ON f.id = em.fixture_id
+        LEFT JOIN fixture_stats fs ON fs.fixture_id = f.id
         WHERE em.zone = ? AND em.df_level = ? AND em.bts_pocket = ? AND em.market = ?
           AND em.emitted_at >= ?
           AND f.home_score IS NOT NULL AND f.away_score IS NOT NULL
@@ -121,11 +136,13 @@ def _compute_cell_drift(conn: sqlite3.Connection, zone: str, df: str, bts: str,
 
     # V3.1 (2026-05-28): non-loss hit rate (matches static_policy baseline
     # convention — voids count as 1, not 0.5). See is_hit() docstring.
+    # corners_nl picks need total_corners from fixture_stats join.
     hits = 0
     n = 0
     for r in rows:
         h = is_hit(settle_pick(r["market"], r["home_score"], r["away_score"],
-                                r["home_odd"], r["away_odd"], r["pick"]))
+                                r["home_odd"], r["away_odd"], r["pick"],
+                                total_corners=r["total_corners"]))
         if h is not None:
             hits += h
             n += 1
