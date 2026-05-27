@@ -2,14 +2,13 @@
 
 from __future__ import annotations
 
-import math
 import sqlite3
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
 from fastapi import APIRouter, Query
 
-from app.api.routes_picks import settle_pick
+from app.api.routes_picks import settle_pick, is_hit
 from app.db.database import get_conn
 from app.engine.classify import zone_of, bts_of, df_of
 from app.engine.foundation import load_foundation
@@ -26,53 +25,19 @@ DRIFT_MIN_N = 10
 # Drift helpers (exported for use by routes_diagnostics)
 # ---------------------------------------------------------------------------
 
-def _wilson_ci(hits: float, n: int, z: float = 1.96) -> tuple[float | None, float | None]:
-    """Wilson score interval (95% by default) for a proportion.
+def _drift_flag(gap_pp: float | None, recent_n: int, min_n: int = DRIFT_MIN_N) -> str:
+    """Simple gap-based drift verdict matching V3 / Session 11 convention.
 
-    Accepts a fractional hits count (settle_pick returns 0.0 / 0.5 / 1.0 for
-    loss / void / win, summed across picks). For pure binomial use integer hits.
-    Returns (lb, ub) as percentages in [0, 100], or (None, None) when n == 0.
-    """
-    if n == 0:
-        return (None, None)
-    p = hits / n
-    den = 1.0 + z * z / n
-    centre = (p + z * z / (2 * n)) / den
-    margin = (z * math.sqrt(p * (1 - p) / n + z * z / (4 * n * n))) / den
-    return (max(0.0, centre - margin) * 100.0, min(1.0, centre + margin) * 100.0)
+    no_data  : recent sample < min_n (default 10)
+    drifting : recent rate >= 10pp below historical baseline
+    watch    : recent rate >= 5pp below historical baseline
+    stable   : within 5pp of historical baseline (positive deltas included)
 
-
-def _drift_flag(gap_pp: float | None, recent_n: int, min_n: int = DRIFT_MIN_N,
-                wilson_lb: float | None = None, wilson_ub: float | None = None,
-                hist_pct: float | None = None) -> str:
-    """Drift verdict — Wilson LB/UB aware when provided, else legacy gap_pp.
-
-    Wilson-aware logic (V3.1, 2026-05-28):
-      drifting : we are 95% sure the cell is underperforming by >= 10pp
-                 (Wilson UB <= hist - 10)
-      watch    : we are 95% sure the cell is underperforming by >= 5pp
-                 (Wilson UB <= hist - 5)  OR  the CI straddles the -5pp line
-                 (i.e. LB < hist - 5 but UB > hist - 5)
-      stable   : we are 95% sure the cell is performing within 5pp of baseline
-                 (Wilson LB >= hist - 5)
-      no_data  : n < min_n  OR  Wilson CI cannot be computed
-
-    Legacy fallback when Wilson inputs missing:
-      gap_pp <= -10 -> drifting; <= -5 -> watch; else stable.
+    Hit rate inputs use V3 non-loss rate (DNB voids count as wins) — see
+    `routes_picks.is_hit`.
     """
     if recent_n < min_n:
         return "no_data"
-
-    # Wilson-aware path
-    if wilson_lb is not None and wilson_ub is not None and hist_pct is not None:
-        if wilson_ub <= hist_pct - 10:
-            return "drifting"
-        if wilson_lb >= hist_pct - 5:
-            return "stable"
-        # CI straddles or UB sits below -5
-        return "watch"
-
-    # Legacy fallback
     if gap_pp is None:
         return "no_data"
     if gap_pp <= -10:
@@ -117,37 +82,31 @@ def compute_drift_rows(
         (cutoff,),
     ).fetchall()
 
-    recent: dict[tuple[str, str, str], dict[str, float]] = {}
+    # V3.1 (2026-05-28): non-loss hit rate (matches static_policy convention —
+    # voids count as 1, not 0.5). Wilson removed per operator decision.
+    recent: dict[tuple[str, str, str], dict[str, int]] = {}
     for r in recent_rows:
         key = (r["zone"], r["df_level"], r["bts_pocket"])
         if key not in live_promoted:
             continue
-        outcome = settle_pick(r["market"], r["home_score"], r["away_score"],
-                               r["home_odd"], r["away_odd"], r["pick"])
-        if outcome is None:
+        h = is_hit(settle_pick(r["market"], r["home_score"], r["away_score"],
+                                r["home_odd"], r["away_odd"], r["pick"]))
+        if h is None:
             continue
         if key not in recent:
-            recent[key] = {"hits": 0.0, "n": 0}
-        recent[key]["hits"] += outcome
+            recent[key] = {"hits": 0, "n": 0}
+        recent[key]["hits"] += h
         recent[key]["n"] += 1
 
     rows: list[dict[str, Any]] = []
     for (zone, df, bts), cell in sorted(live_promoted.items()):
         hist_pct = cell["threeway_hit"]
         hist_n = cell.get("n_fixtures", cell.get("n", 0))
-        rec = recent.get((zone, df, bts), {"hits": 0.0, "n": 0})
+        rec = recent.get((zone, df, bts), {"hits": 0, "n": 0})
         r_n = rec["n"]
         r_hit = round(rec["hits"] / r_n * 100, 1) if r_n > 0 else None
         gap_pp = round(r_hit - hist_pct, 1) if r_hit is not None else None
-        # V3.1 (2026-05-28): Wilson 95% CI on recent live rate.
-        # Suppresses small-sample false drift alarms (n=3 with 1 win no longer
-        # flags as "drifting -40pp" — Wilson UB sits high enough that we can't
-        # confidently say the cell is underperforming).
-        w_lb, w_ub = _wilson_ci(rec["hits"], r_n)
-        w_lb_r = round(w_lb, 1) if w_lb is not None else None
-        w_ub_r = round(w_ub, 1) if w_ub is not None else None
-        flag = _drift_flag(gap_pp, r_n, min_sample_n,
-                           wilson_lb=w_lb, wilson_ub=w_ub, hist_pct=hist_pct)
+        flag = _drift_flag(gap_pp, r_n, min_sample_n)
         rows.append({
             "zone":           zone,
             "df":             df,
@@ -157,8 +116,6 @@ def compute_drift_rows(
             "historical_hit": hist_pct,
             "recent_n":       r_n,
             "recent_hit":     r_hit,
-            "wilson_lb":      w_lb_r,
-            "wilson_ub":      w_ub_r,
             "gap_pp":         gap_pp,
             "flag":           flag,
         })

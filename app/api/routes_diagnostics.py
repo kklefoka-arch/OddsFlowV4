@@ -156,7 +156,8 @@ def today_summary() -> dict[str, Any]:
             voids_ev = sum(1 for outs in events.values()
                            if all(o != 1.0 for o in outs) and any(o == 0.5 for o in outs))
             losses_ev = settled - wins_ev - voids_ev
-            hit_ev = round((wins_ev + 0.5 * voids_ev) / settled * 100, 1) if settled > 0 else None
+            # V3.1 (2026-05-28): V3 non-loss hit rate — voids count as wins.
+            hit_ev = round((wins_ev + voids_ev) / settled * 100, 1) if settled > 0 else None
             n_legs = len([l for l in in_w if l[3] is not None])
             return {
                 "legs":   {"total": len(in_w), "settled": n_legs},

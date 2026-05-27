@@ -54,10 +54,29 @@ def _derive_dnb_odd(home: float | None, draw: float | None, away: float | None) 
     return round((1.0 - p_draw) / p_win, 3), True
 
 
+def is_hit(outcome: float | None) -> int | None:
+    """V3 hit-rate convention: any non-loss counts as 1 (matches static_policy
+    baselines computed via `if alpha_wins or draw: hits += 1`). Loss = 0.
+    None when outcome is unknown. Use this for hit-rate aggregation; use the
+    raw settle_pick output for PnL where voids really do return half a unit.
+    """
+    if outcome is None:
+        return None
+    return 1 if outcome > 0 else 0
+
+
 def settle_pick(market: str, home_score: int | None, away_score: int | None,
                 home_odd: float | None, away_odd: float | None,
                 pick: str = "") -> float | None:
-    """Resolve a V4 pick against a settled fixture. Returns 1.0/0.5/0.0 or None."""
+    """Resolve a V4 pick against a settled fixture. Returns 1.0/0.5/0.0 or None.
+
+    1.0 = win (stake returns full unit profit)
+    0.5 = void (DNB draw — stake returned, half-unit credit for PnL purposes)
+    0.0 = loss (stake lost)
+
+    For HIT-RATE display, pipe this through `is_hit()` instead of summing
+    directly — V3 baselines treat voids as non-losses (hits), not 0.5.
+    """
     import re as _re
     if home_score is None or away_score is None:
         return None
@@ -100,13 +119,15 @@ def _compute_cell_drift(conn: sqlite3.Connection, zone: str, df: str, bts: str,
         (zone, df, bts, market, cutoff),
     ).fetchall()
 
-    hits = 0.0
+    # V3.1 (2026-05-28): non-loss hit rate (matches static_policy baseline
+    # convention — voids count as 1, not 0.5). See is_hit() docstring.
+    hits = 0
     n = 0
     for r in rows:
-        outcome = settle_pick(r["market"], r["home_score"], r["away_score"],
-                              r["home_odd"], r["away_odd"], r["pick"])
-        if outcome is not None:
-            hits += outcome
+        h = is_hit(settle_pick(r["market"], r["home_score"], r["away_score"],
+                                r["home_odd"], r["away_odd"], r["pick"]))
+        if h is not None:
+            hits += h
             n += 1
 
     recent_hit = round(hits / n * 100, 1) if n > 0 else None

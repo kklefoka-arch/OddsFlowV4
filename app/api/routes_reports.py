@@ -86,7 +86,9 @@ def emit_performance(
         voids = sum(1 for l in settled if l[4] == 0.5)
         losses = sum(1 for l in settled if l[4] == 0.0)
         n_settled = len(settled)
-        hit_score = wins + 0.5 * voids
+        # V3.1 (2026-05-28): V3 non-loss hit rate convention — voids count as
+        # wins (matches static_policy baselines). See routes_picks.is_hit.
+        hit_score = wins + voids
         hit_rate_legs = (hit_score / n_settled) if n_settled > 0 else None
 
         events: dict[tuple[int, str], list[float]] = {}
@@ -99,7 +101,8 @@ def emit_performance(
         voids_ev = sum(1 for outs in events.values()
                        if all(o != 1.0 for o in outs) and any(o == 0.5 for o in outs))
         losses_ev = events_settled - wins_ev - voids_ev
-        hit_ev = (wins_ev + 0.5 * voids_ev) / events_settled if events_settled > 0 else None
+        # Non-loss rate (V3 convention) per event.
+        hit_ev = (wins_ev + voids_ev) / events_settled if events_settled > 0 else None
 
         windows_out.append({
             "name":     f"{days}d",
@@ -359,7 +362,8 @@ def emit_market_breakdown(
         wins = sum(1 for o in outs if o == 1.0)
         voids = sum(1 for o in outs if o == 0.5)
         n = len(outs)
-        hit_rate = (wins + 0.5 * voids) / n if n > 0 else None
+        # V3 non-loss hit rate — voids count as wins (matches static_policy).
+        hit_rate = (wins + voids) / n if n > 0 else None
         cell = cells.setdefault((zone, df, bts), {
             "zone": zone,
             "df": df,
