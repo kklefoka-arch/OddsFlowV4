@@ -14,6 +14,14 @@ class Settings(BaseSettings):
     APP_ENV: str = "development"
     LOG_LEVEL: str = "INFO"
 
+    # V3.1 (2026-05-28): Sportmonks API token. Falls back to embedded literal
+    # to keep existing deployments working; override via .env or shell env for
+    # rotation / multi-environment. Used by fetch_upcoming.py, fetch_results.py,
+    # routes_results.py, refresh_odds.py, refresh_stats.py.
+    SPORTMONKS_TOKEN: str = (
+        "2AWINN4fYPiQkY2lfHee9TASZubv74uP1RIY4ILY15Mzg4bw5bH2v2SeKGAN"
+    )
+
     model_config = {"env_file": ".env", "env_file_encoding": "utf-8"}
 
     @property

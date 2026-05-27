@@ -2,14 +2,18 @@
 # Run ONCE as Administrator to register scheduled tasks.
 #
 # Tasks registered:
-#   OddsFlow_FetchUpcoming    -- daily 08:00 SAST (06:00 UTC) -- morning fixture + odds refresh
-#   OddsFlow_EmitPicks        -- daily 08:05 SAST             -- emit picks after odds refresh
-#   OddsFlow_FetchResults     -- daily 23:30 SAST (21:30 UTC) -- European match window close
-#   OddsFlow_Settle           -- daily 23:45 SAST (21:45 UTC) -- settle after European results
-#   OddsFlow_FetchResults_SA  -- daily 03:00 SAST (01:00 UTC) -- South American night matches
-#   OddsFlow_Settle_SA        -- daily 03:15 SAST (01:15 UTC) -- settle after SA results
-#   OddsFlow_Ngrok            -- at system startup            -- keep ngrok tunnel alive
-#   OddsFlow_Server           -- at system startup            -- uvicorn (port 8083)
+#   OddsFlow_FetchUpcoming       -- daily 08:00 SAST (06:00 UTC) -- morning fixture + odds refresh
+#   OddsFlow_EmitPicks           -- daily 08:05 SAST             -- emit picks after odds refresh
+#   OddsFlow_RefreshOdds         -- daily 14:30 SAST             -- intraday odds refresh for evening matches (M2)
+#   OddsFlow_FetchResults        -- daily 23:30 SAST (21:30 UTC) -- European match window close
+#   OddsFlow_Settle              -- daily 23:45 SAST (21:45 UTC) -- settle after European results
+#   OddsFlow_RefreshStats        -- daily 00:00 SAST             -- backfill corner stats for fixtures missing them
+#   OddsFlow_FetchResults_SA     -- daily 03:00 SAST (01:00 UTC) -- South American night matches
+#   OddsFlow_Settle_SA           -- daily 03:15 SAST (01:15 UTC) -- settle after SA results
+#   OddsFlow_FetchResults_DawnSA -- daily 06:00 SAST (04:00 UTC) -- catches late SA matches the 03:00 pass missed (M3)
+#   OddsFlow_Settle_DawnSA       -- daily 06:15 SAST (04:15 UTC) -- settle after the dawn SA pass
+#   OddsFlow_Ngrok               -- at system startup            -- keep ngrok tunnel alive
+#   OddsFlow_Server              -- at system startup            -- uvicorn (port 8083)
 #
 # Why two fetch_results runs:
 #   fetch_results uses  date < UTC_today  as eligibility.
@@ -39,12 +43,21 @@ function Register-OddsFlowTask {
 # European window
 Register-OddsFlowTask "OddsFlow_FetchUpcoming"   "fetch_upcoming.py"  8  0
 Register-OddsFlowTask "OddsFlow_EmitPicks"       "emit_picks.py"      8  5
+Register-OddsFlowTask "OddsFlow_RefreshOdds"     "refresh_odds.py"   14 30
 Register-OddsFlowTask "OddsFlow_FetchResults"    "fetch_results.py"   23 30
 Register-OddsFlowTask "OddsFlow_Settle"          "settle.py"          23 45
+
+# Nightly corner-stats backfill (V3.1 — catches Sportmonks late-arriving corner data)
+Register-OddsFlowTask "OddsFlow_RefreshStats"    "refresh_stats.py"   0  0
 
 # South American window (runs in the early hours -- catches previous UTC-day SA matches)
 Register-OddsFlowTask "OddsFlow_FetchResults_SA" "fetch_results.py"   3  0
 Register-OddsFlowTask "OddsFlow_Settle_SA"       "settle.py"          3  15
+
+# Dawn SA pass (M3 — catches SA matches kicking off 01:30-02:00 UTC that the
+# 03:00 SAST / 01:00 UTC pass found still in-play, by re-checking at 04:00 UTC)
+Register-OddsFlowTask "OddsFlow_FetchResults_DawnSA" "fetch_results.py"  6  0
+Register-OddsFlowTask "OddsFlow_Settle_DawnSA"       "settle.py"          6 15
 
 # Ngrok — startup task, restarts on failure, keeps the tunnel alive
 # (PS 5.1 compatible — replaces null-conditional `?.` which is PS 7+ only)
@@ -80,7 +93,7 @@ Register-ScheduledTask -TaskName "OddsFlow_Server" -Action $uvicornAction -Trigg
 Write-Host "Registered: OddsFlow_Server  (startup, restarts on failure)" -ForegroundColor Green
 
 Write-Host ""
-Write-Host "All 8 tasks registered." -ForegroundColor Cyan
+Write-Host "All 12 tasks registered." -ForegroundColor Cyan
 Write-Host "Verify in Task Scheduler: taskschd.msc -> Task Scheduler Library"
 Write-Host ""
 Write-Host "Times are LOCAL (SAST = UTC+2). Adjust if your clock differs."

@@ -6,7 +6,9 @@ Filters to only the 3 currently active leagues: PL (8), MLS (779), Ireland (360)
 import sqlite3, urllib.request, urllib.parse, json, time
 from datetime import datetime, timezone
 
-TOKEN  = "2AWINN4fYPiQkY2lfHee9TASZubv74uP1RIY4ILY15Mzg4bw5bH2v2SeKGAN"
+# V3.1 (2026-05-28): prefer env override; fall back to literal for legacy.
+import os as _os
+TOKEN  = _os.environ.get("SPORTMONKS_TOKEN", "2AWINN4fYPiQkY2lfHee9TASZubv74uP1RIY4ILY15Mzg4bw5bH2v2SeKGAN")
 DB     = r"C:\OddsFlowV4\data\oddsflow_v4.db"
 
 TODAY     = datetime.now(timezone.utc).strftime("%Y-%m-%d")

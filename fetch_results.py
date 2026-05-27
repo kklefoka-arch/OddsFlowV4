@@ -12,7 +12,9 @@ import sqlite3, urllib.request, urllib.parse, json, time
 from datetime import date as date_cls, datetime, timedelta, timezone
 from collections import defaultdict
 
-TOKEN = "2AWINN4fYPiQkY2lfHee9TASZubv74uP1RIY4ILY15Mzg4bw5bH2v2SeKGAN"
+# V3.1 (2026-05-28): prefer env override; fall back to literal for legacy.
+import os as _os
+TOKEN = _os.environ.get("SPORTMONKS_TOKEN", "2AWINN4fYPiQkY2lfHee9TASZubv74uP1RIY4ILY15Mzg4bw5bH2v2SeKGAN")
 DB    = r"C:\OddsFlowV4\data\oddsflow_v4.db"
 BASE  = "https://api.sportmonks.com/v3/football"
 
@@ -34,12 +36,26 @@ ACTIVE_LEAGUES = {
 # API
 # ---------------------------------------------------------------------------
 
-def api_get(path: str, params: dict) -> dict:
+def api_get(path: str, params: dict, retries: int = 3) -> dict:
+    """V3.1 (2026-05-28): retry on transient API failures (D13 in process audit).
+
+    Backoff: 8s, 16s on first two retries. Matches fetch_upcoming.py pattern.
+    """
     params["api_token"] = TOKEN
     url = f"{BASE}/{path}?{urllib.parse.urlencode(params)}"
     req = urllib.request.Request(url)
-    with urllib.request.urlopen(req, timeout=30) as r:
-        return json.loads(r.read())
+    last_err: Exception | None = None
+    for attempt in range(retries):
+        try:
+            with urllib.request.urlopen(req, timeout=30) as r:
+                return json.loads(r.read())
+        except Exception as e:
+            last_err = e
+            if attempt < retries - 1:
+                wait = 8 * (2 ** attempt)
+                print(f"    [retry {attempt + 1}/{retries - 1}] {e} — sleeping {wait}s")
+                time.sleep(wait)
+    raise last_err  # type: ignore[misc]
 
 
 def fetch_all(path: str, params: dict, max_pages: int = 20) -> list:

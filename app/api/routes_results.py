@@ -20,13 +20,19 @@ from app.settings import settings
 
 router = APIRouter(tags=["results"])
 
-_TOKEN = "2AWINN4fYPiQkY2lfHee9TASZubv74uP1RIY4ILY15Mzg4bw5bH2v2SeKGAN"
+# V3.1 (2026-05-28): use settings.SPORTMONKS_TOKEN (env-overridable).
+_TOKEN = settings.SPORTMONKS_TOKEN
 _BASE  = "https://api.sportmonks.com/v3/football"
 
+# V3.1 (2026-05-28): synced with fetch_upcoming.py — drops decommissioned EU
+# big-5 league IDs (8, 301, 564, 384, 567) and adds current active set.
 ACTIVE_LEAGUES = {
-    8, 301, 564, 384, 573, 444, 345, 292, 360, 779, 648, 3537, 1034,
-    567, 579, 585, 588, 681, 678, 696, 1689, 295, 286, 289, 791, 3550, 989,
-    1607, 2545, 1098,
+    # T1
+    573, 444, 345, 292, 360, 779, 648, 3537, 1034,
+    # T2
+    393, 405, 579, 585, 588, 681, 678, 696, 1689, 295, 286, 289, 791, 3550, 989,
+    # T3
+    1642, 351, 797, 1607, 2545, 1098,
 }
 
 # Sportmonks state short_name / developer_name values that indicate FT
