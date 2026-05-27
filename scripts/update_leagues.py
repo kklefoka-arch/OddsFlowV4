@@ -16,10 +16,6 @@ DB = r"C:\OddsFlowV4\data\oddsflow_v4.db"
 # Format: (sportmonks_id, country, name, tier)
 LEAGUES = [
     # T1 — top-flight leagues
-    (8,    "England",             "Premier League",              1),
-    (301,  "France",              "Ligue 1",                     1),
-    (564,  "Spain",               "La Liga",                     1),
-    (384,  "Italy",               "Serie A",                     1),
     (573,  "Sweden",              "Allsvenskan",                 1),
     (444,  "Norway",              "Eliteserien",                 1),
     (345,  "Iceland",             "Besta deild",                 1),
@@ -30,7 +26,8 @@ LEAGUES = [
     (3537, "Japan",               "J1 100 Year Vision League",   1),
     (1034, "South Korea",         "K League 1",                  1),
     # T2 — second-tier / strong regional leagues
-    (567,  "Spain",               "La Liga 2",                   2),
+    (393,  "Kazakhstan",          "Premier League",              2),
+    (405,  "Lithuania",           "A Lyga",                      2),
     (579,  "Sweden",              "Superettan",                  2),
     (585,  "Sweden",              "Ettan: North",                2),
     (588,  "Sweden",              "Ettan: South",                2),
@@ -45,6 +42,9 @@ LEAGUES = [
     (3550, "Japan",               "J2/J3 100 Year Vision League",2),
     (989,  "China",               "Super League",                2),
     # T3 — lower tiers / development leagues
+    (1642, "Argentina",           "Reserve League",              3),
+    (351,  "Iceland",             "2. Deild",                    3),
+    (797,  "United States",       "USL League Two",              3),
     (1607, "United States",       "USL League One",              3),
     (2545, "United States",       "MLS Next Pro",                3),
     (1098, "Bolivia",             "Liga De Futbol Prof",         3),

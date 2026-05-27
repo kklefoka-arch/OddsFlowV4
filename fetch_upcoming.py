@@ -15,10 +15,6 @@ END_DATE  = "2026-12-31"
 # All 30 subscribed leagues — sportmonks_id: tier
 ACTIVE_LEAGUES = {
     # T1
-    8:    1,   # England — Premier League
-    301:  1,   # France — Ligue 1
-    564:  1,   # Spain — La Liga
-    384:  1,   # Italy — Serie A
     573:  1,   # Sweden — Allsvenskan
     444:  1,   # Norway — Eliteserien
     345:  1,   # Iceland — Besta deild
@@ -29,7 +25,8 @@ ACTIVE_LEAGUES = {
     3537: 1,   # Japan — J1 100 Year Vision League
     1034: 1,   # South Korea — K League 1
     # T2
-    567:  2,   # Spain — La Liga 2
+    393:  2,   # Kazakhstan — Premier League
+    405:  2,   # Lithuania — A Lyga
     579:  2,   # Sweden — Superettan
     585:  2,   # Sweden — Ettan: North
     588:  2,   # Sweden — Ettan: South
@@ -44,6 +41,9 @@ ACTIVE_LEAGUES = {
     3550: 2,   # Japan — J2/J3 100 Year Vision League
     989:  2,   # China — Super League
     # T3
+    1642: 3,   # Argentina — Reserve League
+    351:  3,   # Iceland — 2. Deild
+    797:  3,   # United States — USL League Two
     1607: 3,   # United States — USL League One
     2545: 3,   # United States — MLS Next Pro
     1098: 3,   # Bolivia — Liga De Futbol Prof
@@ -59,12 +59,12 @@ def api_get(path: str, params: dict, retries: int = 3) -> dict:
     last_err: Exception | None = None
     for attempt in range(retries):
         try:
-            with urllib.request.urlopen(req, timeout=60) as r:
+            with urllib.request.urlopen(req, timeout=120) as r:
                 return json.loads(r.read())
         except Exception as e:
             last_err = e
             if attempt < retries - 1:
-                wait = 4 * (2 ** attempt)
+                wait = 8 * (2 ** attempt)
                 print(f"  [retry {attempt + 1}/{retries - 1}] {e} — sleeping {wait}s")
                 time.sleep(wait)
     raise last_err  # type: ignore[misc]
@@ -73,7 +73,7 @@ def api_get(path: str, params: dict, retries: int = 3) -> dict:
 def fetch_all(path: str, params: dict, max_pages: int = 30) -> list:
     rows, page = [], 1
     while page <= max_pages:
-        p = {**params, "page": page, "per_page": 50}
+        p = {**params, "page": page, "per_page": 25}
         data = api_get(path, p)
         batch = data.get("data", [])
         if not isinstance(batch, list):
@@ -83,7 +83,7 @@ def fetch_all(path: str, params: dict, max_pages: int = 30) -> list:
         if not data.get("pagination", {}).get("has_more"):
             break
         page += 1
-        time.sleep(0.2)
+        time.sleep(0.5)
     return rows
 
 
@@ -162,7 +162,8 @@ inserted = updated = skipped = 0
 # July–Oct windows use monthly splits (max_pages=30) to avoid hitting the
 # 20-page / 1,000-fixture cap for dense periods.
 windows = [
-    (TODAY, "2026-06-30", 20),
+    (TODAY,        "2026-06-15", 20),
+    ("2026-06-16", "2026-06-30", 20),
     ("2026-07-01", "2026-07-31", 30),
     ("2026-08-01", "2026-08-31", 30),
     ("2026-09-01", "2026-09-30", 30),
@@ -268,7 +269,7 @@ for fx in fixtures:
                  goals_over_15_odd, goals_over_25_odd, goals_over_35_odd,
                  corners_over_75_odd, corners_over_85_odd, corners_over_95_odd,
                  draw_zone, bts_pocket, created_at, updated_at)
-            VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+            VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
         """, (
             sm_id, internal_league_id, tier, kickoff_utc, "scheduled",
             ht["id"], at["id"],

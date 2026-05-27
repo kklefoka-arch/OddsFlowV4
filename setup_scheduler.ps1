@@ -3,10 +3,13 @@
 #
 # Tasks registered:
 #   OddsFlow_FetchUpcoming    -- daily 08:00 SAST (06:00 UTC) -- morning fixture + odds refresh
+#   OddsFlow_EmitPicks        -- daily 08:05 SAST             -- emit picks after odds refresh
 #   OddsFlow_FetchResults     -- daily 23:30 SAST (21:30 UTC) -- European match window close
 #   OddsFlow_Settle           -- daily 23:45 SAST (21:45 UTC) -- settle after European results
 #   OddsFlow_FetchResults_SA  -- daily 03:00 SAST (01:00 UTC) -- South American night matches
 #   OddsFlow_Settle_SA        -- daily 03:15 SAST (01:15 UTC) -- settle after SA results
+#   OddsFlow_Ngrok            -- at system startup            -- keep ngrok tunnel alive
+#   OddsFlow_Server           -- at system startup            -- uvicorn (port 8083)
 #
 # Why two fetch_results runs:
 #   fetch_results uses  date < UTC_today  as eligibility.
@@ -35,6 +38,7 @@ function Register-OddsFlowTask {
 
 # European window
 Register-OddsFlowTask "OddsFlow_FetchUpcoming"   "fetch_upcoming.py"  8  0
+Register-OddsFlowTask "OddsFlow_EmitPicks"       "emit_picks.py"      8  5
 Register-OddsFlowTask "OddsFlow_FetchResults"    "fetch_results.py"   23 30
 Register-OddsFlowTask "OddsFlow_Settle"          "settle.py"          23 45
 
@@ -42,8 +46,41 @@ Register-OddsFlowTask "OddsFlow_Settle"          "settle.py"          23 45
 Register-OddsFlowTask "OddsFlow_FetchResults_SA" "fetch_results.py"   3  0
 Register-OddsFlowTask "OddsFlow_Settle_SA"       "settle.py"          3  15
 
+# Ngrok — startup task, restarts on failure, keeps the tunnel alive
+# (PS 5.1 compatible — replaces null-conditional `?.` which is PS 7+ only)
+$ngrokCmd = Get-Command ngrok -ErrorAction SilentlyContinue
+$ngrok    = if ($ngrokCmd) { $ngrokCmd.Source } else { "ngrok" }
+$ngrokAction   = New-ScheduledTaskAction -Execute $ngrok -Argument "http 8083" -WorkingDirectory $workdir
+$ngrokTrigger  = New-ScheduledTaskTrigger -AtStartup
+$ngrokSettings = New-ScheduledTaskSettingsSet `
+                    -ExecutionTimeLimit (New-TimeSpan -Hours 0) `
+                    -RestartCount 10 `
+                    -RestartInterval (New-TimeSpan -Minutes 1) `
+                    -StartWhenAvailable
+Register-ScheduledTask -TaskName "OddsFlow_Ngrok" -Action $ngrokAction -Trigger $ngrokTrigger `
+                       -Settings $ngrokSettings -RunLevel Highest -Force
+Write-Host "Registered: OddsFlow_Ngrok  (startup, restarts on failure)" -ForegroundColor Green
+
+# Uvicorn server — startup task, restarts on failure
+# emit_picks.py calls http://localhost:8083/picks at 08:05, so the server
+# must be running at that time. Without this task, the server doesn't
+# auto-start after a reboot and morning emission silently fails.
+$uvicornAction   = New-ScheduledTaskAction `
+                    -Execute "powershell.exe" `
+                    -Argument "-NoProfile -WindowStyle Hidden -Command `"Set-Location C:\OddsFlowV4; uvicorn app.main:app --host 0.0.0.0 --port 8083`"" `
+                    -WorkingDirectory $workdir
+$uvicornTrigger  = New-ScheduledTaskTrigger -AtStartup
+$uvicornSettings = New-ScheduledTaskSettingsSet `
+                    -ExecutionTimeLimit (New-TimeSpan -Hours 0) `
+                    -RestartCount 10 `
+                    -RestartInterval (New-TimeSpan -Minutes 1) `
+                    -StartWhenAvailable
+Register-ScheduledTask -TaskName "OddsFlow_Server" -Action $uvicornAction -Trigger $uvicornTrigger `
+                       -Settings $uvicornSettings -RunLevel Highest -Force
+Write-Host "Registered: OddsFlow_Server  (startup, restarts on failure)" -ForegroundColor Green
+
 Write-Host ""
-Write-Host "All 5 tasks registered." -ForegroundColor Cyan
+Write-Host "All 8 tasks registered." -ForegroundColor Cyan
 Write-Host "Verify in Task Scheduler: taskschd.msc -> Task Scheduler Library"
 Write-Host ""
 Write-Host "Times are LOCAL (SAST = UTC+2). Adjust if your clock differs."
