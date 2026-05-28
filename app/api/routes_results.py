@@ -130,7 +130,7 @@ def get_results(
                    COALESCE(f.home_team_name, th.name) AS home_team_name,
                    COALESCE(f.away_team_name, ta.name) AS away_team_name,
                    f.home_score, f.away_score, f.total_goals,
-                   f.draw_zone, f.df_level, f.bts_pocket, f.tier,
+                   f.draw_zone, f.bts_pocket, f.tier,
                    fs.home_corners, fs.away_corners, fs.total_corners,
                    lg.name AS league_name, lg.country,
                    em.pick_uuid, em.market, em.pick, em.pick_odd AS emit_odd,

@@ -160,7 +160,7 @@ def emit_recent(
             f"""
             SELECT em.pick_uuid, em.emitted_at, em.fixture_id, em.market, em.pick,
                    em.pick_odd,
-                   em.zone AS em_zone, em.df_level AS em_df, em.bts_pocket AS em_bts,
+                   em.zone AS em_zone, em.bts_pocket AS em_bts,
                    f.date AS kickoff_utc,
                    f.home_score, f.away_score, f.home_odd, f.away_odd,
                    f.btts_yes_odd, f.btts_no_odd,
@@ -187,11 +187,8 @@ def emit_recent(
     by_fixture: dict[int, dict[str, Any]] = {}
     for r in rows:
         fx_id = r["fixture_id"]
-        # V3.1: build partition_key from emit_log columns (the cell as fired)
-        em_zone = r["em_zone"]; em_df = r["em_df"]; em_bts = r["em_bts"]
-        pk = None
-        if em_zone and em_bts:
-            pk = f"{em_zone}:{em_df}:{em_bts}" if em_df else f"{em_zone}:{em_bts}"
+        em_zone = r["em_zone"]; em_bts = r["em_bts"]
+        pk = f"{em_zone}:{em_bts}" if (em_zone and em_bts) else None
         fx = by_fixture.setdefault(fx_id, {
             "fixture_id":   fx_id,
             "kickoff_utc":  r["kickoff_utc"],
@@ -345,7 +342,7 @@ def emit_market_breakdown(
             f"""
             SELECT em.market, em.pick,
                    f.draw_odd, f.btts_yes_odd, f.btts_no_odd,
-                   f.home_score, f.away_score, f.home_odd, f.away_odd, f.df_level,
+                   f.home_score, f.away_score, f.home_odd, f.away_odd,
                    fs.total_corners
             FROM emit_log em
             JOIN fixtures f ON f.id = em.fixture_id
@@ -355,45 +352,42 @@ def emit_market_breakdown(
             """,
             [cutoff.strftime("%Y-%m-%d %H:%M:%S"), *tier_params],
         ).fetchall()
-        # V3.1 (2026-05-28): use V3_ACTIVE stone policy (the authoritative
-        # promotion set the engine actually fires from), not a re-derivation
-        # from live settled data. Fixes M4 (Session 15 process audit) — the
+        # V3 stone policy directly (the authoritative promotion set the engine
+        # actually fires from). Fixes M4 (Session 15 process audit) — the
         # live-foundation approach required ~50+ settled picks per cell to
         # promote, so with current sample sizes every cell showed
         # `is_promoted=false` even though they were firing.
         from app.engine.static_policy import V3_ACTIVE
-        live_promoted_keys: set[tuple[str, str, str]] = set(V3_ACTIVE.keys())
+        live_promoted_keys: set[tuple[str, str]] = set(V3_ACTIVE.keys())
     finally:
         conn.close()
 
-    buckets: dict[tuple[str, str, str, str, str], list[float]] = {}
+    buckets: dict[tuple[str, str, str, str], list[float]] = {}
     for r in rows:
         zone = zone_of(r["draw_odd"])
         bts = bts_of(r["btts_yes_odd"], r["btts_no_odd"])
-        df = r["df_level"]  # backfilled from fixtures
-        if zone is None or bts is None or df is None:
+        if zone is None or bts is None:
             continue
         outcome = settle_pick(r["market"], r["home_score"], r["away_score"],
                                r["home_odd"], r["away_odd"], r["pick"],
                                total_corners=r["total_corners"])
         if outcome is None:
             continue
-        key = (zone, df, bts, r["market"], r["pick"])
+        key = (zone, bts, r["market"], r["pick"])
         buckets.setdefault(key, []).append(outcome)
 
-    cells: dict[tuple[str, str, str], dict[str, Any]] = {}
-    for (zone, df, bts, market, pick), outs in sorted(buckets.items()):
+    cells: dict[tuple[str, str], dict[str, Any]] = {}
+    for (zone, bts, market, pick), outs in sorted(buckets.items()):
         wins = sum(1 for o in outs if o == 1.0)
         voids = sum(1 for o in outs if o == 0.5)
         n = len(outs)
         # V3 non-loss hit rate — voids count as wins (matches static_policy).
         hit_rate = (wins + voids) / n if n > 0 else None
-        cell = cells.setdefault((zone, df, bts), {
+        cell = cells.setdefault((zone, bts), {
             "zone": zone,
-            "df": df,
             "bts_v2": bts,
-            "partition_key": f"{zone}:{df}:{bts}",
-            "is_promoted": (zone, df, bts) in live_promoted_keys,
+            "partition_key": f"{zone}:{bts}",
+            "is_promoted": (zone, bts) in live_promoted_keys,
             "markets": [],
         })
         cell["markets"].append({

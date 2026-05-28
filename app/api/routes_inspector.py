@@ -10,7 +10,7 @@ from fastapi import APIRouter, Query
 
 from app.api.routes_picks import settle_pick, is_hit
 from app.db.database import get_conn
-from app.engine.classify import zone_of, bts_of, df_of
+from app.engine.classify import zone_of, bts_of
 from app.engine.foundation import load_foundation
 from app.engine.promotion import compute_foundation, PROMOTE, PROMOTE_TOLERANCE
 from app.engine.static_policy import PROMOTED_CELLS
@@ -47,15 +47,14 @@ def _drift_flag(gap_pp: float | None, recent_n: int, min_n: int = DRIFT_MIN_N) -
     return "stable"
 
 
-def _get_live_promoted(conn: sqlite3.Connection) -> dict[tuple[str, str, str], dict[str, Any]]:
-    """Return the V3.1 promoted cell set (stone policy).
+def _get_live_promoted(conn: sqlite3.Connection) -> dict[tuple[str, str], dict[str, Any]]:
+    """Return the V3 promoted cell set (stone policy, 2-key).
 
-    V3.1 (2026-05-28): uses V3_ACTIVE / PROMOTED_CELLS directly — the
-    authoritative policy the engine actually fires from. Fixes M4 (Session 15
-    process audit) — the prior live-foundation re-derivation required a large
-    settled sample per cell to promote, leaving drift reports nearly empty
-    under normal operation. The conn parameter is kept for backward
-    compatibility with callers but no longer consulted.
+    Uses PROMOTED_CELLS directly — the authoritative policy the engine fires
+    from. Fixes M4 (Session 15 process audit): the prior live-foundation
+    re-derivation required a large settled sample per cell to promote,
+    leaving drift reports nearly empty under normal operation. The conn
+    parameter is retained for backward compatibility but no longer consulted.
     """
     return dict(PROMOTED_CELLS)
 
@@ -72,7 +71,7 @@ def compute_drift_rows(
 
     recent_rows = conn.execute(
         """
-        SELECT em.zone, em.df_level, em.bts_pocket, em.market, em.pick,
+        SELECT em.zone, em.bts_pocket, em.market, em.pick,
                f.home_score, f.away_score, f.home_odd, f.away_odd,
                fs.total_corners
         FROM emit_log em
@@ -84,11 +83,11 @@ def compute_drift_rows(
         (cutoff,),
     ).fetchall()
 
-    # V3.1 (2026-05-28): non-loss hit rate (voids count as 1, matches V3
-    # baseline). corners_nl needs total_corners from fixture_stats join.
-    recent: dict[tuple[str, str, str], dict[str, int]] = {}
+    # V3 non-loss hit rate (voids count as 1, matches V3 baseline).
+    # corners_nl needs total_corners from fixture_stats join.
+    recent: dict[tuple[str, str], dict[str, int]] = {}
     for r in recent_rows:
-        key = (r["zone"], r["df_level"], r["bts_pocket"])
+        key = (r["zone"], r["bts_pocket"])
         if key not in live_promoted:
             continue
         h = is_hit(settle_pick(r["market"], r["home_score"], r["away_score"],
@@ -102,19 +101,18 @@ def compute_drift_rows(
         recent[key]["n"] += 1
 
     rows: list[dict[str, Any]] = []
-    for (zone, df, bts), cell in sorted(live_promoted.items()):
+    for (zone, bts), cell in sorted(live_promoted.items()):
         hist_pct = cell["threeway_hit"]
         hist_n = cell.get("n_fixtures", cell.get("n", 0))
-        rec = recent.get((zone, df, bts), {"hits": 0, "n": 0})
+        rec = recent.get((zone, bts), {"hits": 0, "n": 0})
         r_n = rec["n"]
         r_hit = round(rec["hits"] / r_n * 100, 1) if r_n > 0 else None
         gap_pp = round(r_hit - hist_pct, 1) if r_hit is not None else None
         flag = _drift_flag(gap_pp, r_n, min_sample_n)
         rows.append({
             "zone":           zone,
-            "df":             df,
             "bts_v2":         bts,
-            "partition_key":  f"{zone}:{df}:{bts}",
+            "partition_key":  f"{zone}:{bts}",
             "historical_n":   hist_n,
             "historical_hit": hist_pct,
             "recent_n":       r_n,
@@ -168,7 +166,7 @@ def recent_settled(
             """
             SELECT pr.pick_uuid, pr.settled_at, pr.outcome, pr.actual_value,
                    em.fixture_id, em.market, em.pick, em.pick_odd,
-                   em.zone AS em_zone, em.df_level AS em_df, em.bts_pocket AS em_bts,
+                   em.zone AS em_zone, em.bts_pocket AS em_bts,
                    f.date AS kickoff_utc, f.home_score, f.away_score,
                    lg.name AS league_name, lg.country, lg.tier,
                    th.name AS home_team, ta.name AS away_team
@@ -189,11 +187,8 @@ def recent_settled(
     fixtures_by_id: dict[int, dict[str, Any]] = {}
     for r in rows:
         fx_id = r["fixture_id"]
-        # V3.1: build partition_key from emit_log columns (the cell as fired)
-        em_zone = r["em_zone"]; em_df = r["em_df"]; em_bts = r["em_bts"]
-        pk = None
-        if em_zone and em_bts:
-            pk = f"{em_zone}:{em_df}:{em_bts}" if em_df else f"{em_zone}:{em_bts}"
+        em_zone = r["em_zone"]; em_bts = r["em_bts"]
+        pk = f"{em_zone}:{em_bts}" if (em_zone and em_bts) else None
         fx = fixtures_by_id.setdefault(fx_id, {
             "fixture_id":    fx_id,
             "kickoff_utc":   r["kickoff_utc"],
@@ -251,15 +246,10 @@ def recent_settled(
 def similar(
     zone: str | None = Query(None),
     bts: str | None = Query(None),
-    df: str | None = Query(None),
     fixture_id: int | None = Query(None),
     limit: int = Query(50, ge=5, le=200),
 ) -> dict[str, Any]:
-    """Historical settled fixtures in the same cell. Pre-match context.
-
-    V3.1 (2026-05-27): df is now an optional filter. If omitted, returns all
-    (zone, bts) fixtures across DF subdivisions (V3-style behavior).
-    """
+    """Historical settled fixtures in the same (zone, bts) cell. Pre-match context."""
     conn = get_conn(settings.sqlite_path)
     try:
         if fixture_id is not None:
@@ -270,45 +260,25 @@ def similar(
             if fx:
                 zone = zone_of(fx["draw_odd"])
                 bts  = bts_of(fx["btts_yes_odd"], fx["btts_no_odd"])
-                df   = df_of(fx["home_odd"], fx["away_odd"])
 
         if not zone or not bts:
             return {"error": "zone and bts required (or a valid fixture_id)", "fixtures": []}
 
-        # df is optional — when present, filter further
-        if df:
-            rows = conn.execute("""
-                SELECT f.id, f.date, f.home_team_name, f.away_team_name,
-                       f.home_score, f.away_score, f.home_odd, f.away_odd, f.draw_odd,
-                       lg.name AS league_name,
-                       em.pick_uuid, em.market, em.pick, pr.outcome
-                FROM fixtures f
-                LEFT JOIN leagues lg      ON lg.id = f.league_id
-                LEFT JOIN emit_log em     ON em.fixture_id = f.id
-                LEFT JOIN pick_results pr ON pr.pick_uuid = em.pick_uuid
-                WHERE f.home_score IS NOT NULL
-                  AND f.draw_zone  = ?
-                  AND f.bts_pocket = ?
-                  AND f.df_level   = ?
-                ORDER BY f.date DESC
-                LIMIT ?
-            """, (zone, bts, df, limit)).fetchall()
-        else:
-            rows = conn.execute("""
-                SELECT f.id, f.date, f.home_team_name, f.away_team_name,
-                       f.home_score, f.away_score, f.home_odd, f.away_odd, f.draw_odd,
-                       lg.name AS league_name,
-                       em.pick_uuid, em.market, em.pick, pr.outcome
-                FROM fixtures f
-                LEFT JOIN leagues lg      ON lg.id = f.league_id
-                LEFT JOIN emit_log em     ON em.fixture_id = f.id
-                LEFT JOIN pick_results pr ON pr.pick_uuid = em.pick_uuid
-                WHERE f.home_score IS NOT NULL
-                  AND f.draw_zone  = ?
-                  AND f.bts_pocket = ?
-                ORDER BY f.date DESC
-                LIMIT ?
-            """, (zone, bts, limit)).fetchall()
+        rows = conn.execute("""
+            SELECT f.id, f.date, f.home_team_name, f.away_team_name,
+                   f.home_score, f.away_score, f.home_odd, f.away_odd, f.draw_odd,
+                   lg.name AS league_name,
+                   em.pick_uuid, em.market, em.pick, pr.outcome
+            FROM fixtures f
+            LEFT JOIN leagues lg      ON lg.id = f.league_id
+            LEFT JOIN emit_log em     ON em.fixture_id = f.id
+            LEFT JOIN pick_results pr ON pr.pick_uuid = em.pick_uuid
+            WHERE f.home_score IS NOT NULL
+              AND f.draw_zone  = ?
+              AND f.bts_pocket = ?
+            ORDER BY f.date DESC
+            LIMIT ?
+        """, (zone, bts, limit)).fetchall()
     finally:
         conn.close()
 
@@ -352,10 +322,9 @@ def similar(
     hit_rate = round(green / total * 100, 1) if total else None
     return {
         "zone":          zone,
-        "df":            df,
         "bts_pocket":    bts,
-        "partition_key": f"{zone}:{df}:{bts}" if df else f"{zone}:{bts}",
-        "threeway_pick": "DNB (Alpha Win or Draw)" if zone in ("strong", "standard") else "Alpha Win",
+        "partition_key": f"{zone}:{bts}",
+        "threeway_pick": "DNB (Alpha Win or Draw)" if zone in ("strong", "standard", "low") else "Alpha Win",
         "sample_n":      total,
         "threeway_hit":  hit_rate,
         "fixtures":      list(fx_map.values()),

@@ -9,7 +9,7 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from typing import Any
 
-from app.engine.classify import zone_of, bts_of, df_of
+from app.engine.classify import zone_of, bts_of
 from app.engine.natural_lines import HALF_LINES, ZONES, BTS_POCKETS, natural_line, system_line
 
 # ---------------------------------------------------------------------------
@@ -137,9 +137,7 @@ def _threeway_pick_label(zone: str) -> str:
 # ---------------------------------------------------------------------------
 
 def _compute_cells(rows: list[dict]) -> list[dict[str, Any]]:
-    """Build per-(zone × df × bts_pocket) cell statistics from a list of fixture rows.
-
-    V3.1 (2026-05-27): partition key extended with DF (Difference Factor).
+    """Build per-(zone × bts_pocket) cell statistics from a list of fixture rows.
 
     Each row must contain: draw_odd, btts_yes_odd, btts_no_odd,
     home_score, away_score, home_corners, away_corners,
@@ -147,21 +145,19 @@ def _compute_cells(rows: list[dict]) -> list[dict[str, Any]]:
 
     Returns list of cell dicts (unsorted, promotion ranks not yet assigned).
     """
-    # Accumulator: keyed by (zone, df, bts_pocket)
-    acc: dict[tuple[str, str, str], dict[str, Any]] = {}
+    # Accumulator: keyed by (zone, bts_pocket)
+    acc: dict[tuple[str, str], dict[str, Any]] = {}
 
     for row in rows:
         zone = zone_of(row.get("draw_odd"))
-        df   = df_of(row.get("home_odd"), row.get("away_odd"))
-        bts  = bts_of(row.get("btts_yes_odd"), row.get("btts_no_odd"))
-        if zone is None or df is None or bts is None:
+        bts = bts_of(row.get("btts_yes_odd"), row.get("btts_no_odd"))
+        if zone is None or bts is None:
             continue
 
-        key = (zone, df, bts)
+        key = (zone, bts)
         if key not in acc:
             acc[key] = {
                 "zone": zone,
-                "df": df,
                 "bts_pocket": bts,
                 "n": 0,
                 "gn_green": 0,  # goals natural line
@@ -194,7 +190,7 @@ def _compute_cells(rows: list[dict]) -> list[dict[str, Any]]:
     result: list[dict[str, Any]] = []
     total_n = sum(c["n"] for c in acc.values())
 
-    for (zone, df, bts), cell in acc.items():
+    for (zone, bts), cell in acc.items():
         n = cell["n"]
         gn_hit = _hit_rate(cell["gn_green"], n)
         gs_hit = _hit_rate(cell["gs_green"], n)
@@ -207,7 +203,6 @@ def _compute_cells(rows: list[dict]) -> list[dict[str, Any]]:
 
         result.append({
             "zone": zone,
-            "df": df,
             "bts_pocket": bts,
             "n_fixtures": n,
             "n_pct_of_zone": round(n / total_n * 100, 2) if total_n else 0.0,

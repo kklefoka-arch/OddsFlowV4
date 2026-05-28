@@ -149,7 +149,6 @@
         <div class="fx-card-meta">
           {% if fx.draw_zone %}
             <span class="zone-badge">{{ fx.draw_zone | replace("_"," ") }}</span>
-            {% if fx.df_level %}<span class="bts-badge">{{ fx.df_level }}</span>{% endif %}
             <span class="bts-badge">{{ fx.bts_pocket | replace("_"," ") }}</span>
           {% endif %}
           <span class="odd-cell" style="font-size:0.72rem">D {{ "%.2f"|format(fx.draw_odd) if fx.draw_odd else "—" }}</span>

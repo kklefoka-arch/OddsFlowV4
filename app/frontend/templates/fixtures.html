@@ -40,7 +40,6 @@
         <th>Fixture</th>
         <th>Tier</th>
         <th>Zone</th>
-        <th>DF</th>
         <th>BTS</th>
         <th class="num-col">H</th>
         <th class="num-col">D</th>
@@ -65,13 +64,6 @@
         <td>
           {% if fix.draw_zone %}
             <span class="zone-badge">{{ fix.draw_zone | replace("_"," ") }}</span>
-          {% else %}
-            <span class="dim">—</span>
-          {% endif %}
-        </td>
-        <td>
-          {% if fix.df_level %}
-            <span class="bts-badge">{{ fix.df_level }}</span>
           {% else %}
             <span class="dim">—</span>
           {% endif %}
