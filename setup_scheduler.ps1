@@ -30,13 +30,17 @@ if (-not (Test-Path $logdir)) { New-Item -ItemType Directory -Path $logdir | Out
 
 function Register-OddsFlowTask {
     param($name, $script, $hour, $minute)
-    $action   = New-ScheduledTaskAction -Execute $python -Argument $script -WorkingDirectory $workdir
-    $trigger  = New-ScheduledTaskTrigger -Daily -At "$($hour):$($minute)"
-    $settings = New-ScheduledTaskSettingsSet `
+    $action    = New-ScheduledTaskAction -Execute $python -Argument $script -WorkingDirectory $workdir
+    $trigger   = New-ScheduledTaskTrigger -Daily -At "$($hour):$($minute)"
+    $settings  = New-ScheduledTaskSettingsSet `
                     -ExecutionTimeLimit (New-TimeSpan -Minutes 30) `
                     -StartWhenAvailable
+    # S4U principal so Start-ScheduledTask works from any context (incl. WSL).
+    # Interactive LogonType queues the task until an interactive shell exists.
+    $principal = New-ScheduledTaskPrincipal -UserId "$env:USERDOMAIN\$env:USERNAME" `
+                                              -LogonType S4U -RunLevel Highest
     Register-ScheduledTask -TaskName $name -Action $action -Trigger $trigger `
-                           -Settings $settings -RunLevel Highest -Force
+                           -Settings $settings -Principal $principal -Force
     Write-Host "Registered: $name  ($($hour):$([string]$minute.ToString('D2')) local)" -ForegroundColor Green
 }
 
@@ -63,33 +67,37 @@ Register-OddsFlowTask "OddsFlow_Settle_DawnSA"       "settle.py"          6 15
 # (PS 5.1 compatible — replaces null-conditional `?.` which is PS 7+ only)
 $ngrokCmd = Get-Command ngrok -ErrorAction SilentlyContinue
 $ngrok    = if ($ngrokCmd) { $ngrokCmd.Source } else { "ngrok" }
-$ngrokAction   = New-ScheduledTaskAction -Execute $ngrok -Argument "http 8083" -WorkingDirectory $workdir
-$ngrokTrigger  = New-ScheduledTaskTrigger -AtStartup
-$ngrokSettings = New-ScheduledTaskSettingsSet `
-                    -ExecutionTimeLimit (New-TimeSpan -Hours 0) `
-                    -RestartCount 10 `
-                    -RestartInterval (New-TimeSpan -Minutes 1) `
-                    -StartWhenAvailable
+$ngrokAction    = New-ScheduledTaskAction -Execute $ngrok -Argument "http 8083" -WorkingDirectory $workdir
+$ngrokTrigger   = New-ScheduledTaskTrigger -AtStartup
+$ngrokSettings  = New-ScheduledTaskSettingsSet `
+                     -ExecutionTimeLimit (New-TimeSpan -Hours 0) `
+                     -RestartCount 10 `
+                     -RestartInterval (New-TimeSpan -Minutes 1) `
+                     -StartWhenAvailable
+$ngrokPrincipal = New-ScheduledTaskPrincipal -UserId "$env:USERDOMAIN\$env:USERNAME" `
+                                              -LogonType S4U -RunLevel Highest
 Register-ScheduledTask -TaskName "OddsFlow_Ngrok" -Action $ngrokAction -Trigger $ngrokTrigger `
-                       -Settings $ngrokSettings -RunLevel Highest -Force
+                       -Settings $ngrokSettings -Principal $ngrokPrincipal -Force
 Write-Host "Registered: OddsFlow_Ngrok  (startup, restarts on failure)" -ForegroundColor Green
 
 # Uvicorn server — startup task, restarts on failure
 # emit_picks.py calls http://localhost:8083/picks at 08:05, so the server
 # must be running at that time. Without this task, the server doesn't
 # auto-start after a reboot and morning emission silently fails.
-$uvicornAction   = New-ScheduledTaskAction `
-                    -Execute "powershell.exe" `
-                    -Argument "-NoProfile -WindowStyle Hidden -Command `"Set-Location C:\OddsFlowV4; uvicorn app.main:app --host 0.0.0.0 --port 8083`"" `
-                    -WorkingDirectory $workdir
-$uvicornTrigger  = New-ScheduledTaskTrigger -AtStartup
-$uvicornSettings = New-ScheduledTaskSettingsSet `
-                    -ExecutionTimeLimit (New-TimeSpan -Hours 0) `
-                    -RestartCount 10 `
-                    -RestartInterval (New-TimeSpan -Minutes 1) `
-                    -StartWhenAvailable
+$uvicornAction    = New-ScheduledTaskAction `
+                     -Execute "powershell.exe" `
+                     -Argument "-NoProfile -WindowStyle Hidden -Command `"Set-Location C:\OddsFlowV4; uvicorn app.main:app --host 0.0.0.0 --port 8083`"" `
+                     -WorkingDirectory $workdir
+$uvicornTrigger   = New-ScheduledTaskTrigger -AtStartup
+$uvicornSettings  = New-ScheduledTaskSettingsSet `
+                     -ExecutionTimeLimit (New-TimeSpan -Hours 0) `
+                     -RestartCount 10 `
+                     -RestartInterval (New-TimeSpan -Minutes 1) `
+                     -StartWhenAvailable
+$uvicornPrincipal = New-ScheduledTaskPrincipal -UserId "$env:USERDOMAIN\$env:USERNAME" `
+                                                -LogonType S4U -RunLevel Highest
 Register-ScheduledTask -TaskName "OddsFlow_Server" -Action $uvicornAction -Trigger $uvicornTrigger `
-                       -Settings $uvicornSettings -RunLevel Highest -Force
+                       -Settings $uvicornSettings -Principal $uvicornPrincipal -Force
 Write-Host "Registered: OddsFlow_Server  (startup, restarts on failure)" -ForegroundColor Green
 
 Write-Host ""
