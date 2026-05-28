@@ -98,6 +98,15 @@ PROMOTED_CELLS: dict[tuple[str, str], dict[str, Any]] = {
         "gn_hit": 48.5, "cn_hit": 0.0, "n_fixtures": 783,
         "promote_status": "PASS",
     },
+    ("low", "strong_over"): {
+        "zone": "low", "bts_pocket": "strong_over",
+        "cell_promoted": not LOW_ZONE_SUPPRESS,
+        "threeway_hit": 74.0, "threeway_pick": _DNB,
+        "gn_hit": 67.1, "cn_hit": 0.0, "n_fixtures": 639,
+        "promote_status": "PASS",
+    },
+    # NOTE: ("low", "strong_under") deferred — n=18 too small to be meaningful.
+    #       Re-evaluate after 6-week post-overlay settlement when sample grows.
     # -- one_sided zone (Golden Rule: alpha_win + goals O2.5) --------------
     ("one_sided", "slight_over"): {
         "zone": "one_sided", "bts_pocket": "slight_over",
@@ -111,6 +120,20 @@ PROMOTED_CELLS: dict[tuple[str, str], dict[str, Any]] = {
         "cell_promoted": True,
         "threeway_hit": 77.1, "threeway_pick": _WIN,
         "gn_hit": 61.1, "cn_hit": 0.0, "n_fixtures": 1307,
+        "promote_status": "PASS",
+    },
+    ("one_sided", "strong_over"): {
+        "zone": "one_sided", "bts_pocket": "strong_over",
+        "cell_promoted": True,
+        "threeway_hit": 60.5, "threeway_pick": _WIN,
+        "gn_hit": 67.6, "cn_hit": 0.0, "n_fixtures": 210,
+        "promote_status": "FLAG",
+    },
+    ("one_sided", "strong_under"): {
+        "zone": "one_sided", "bts_pocket": "strong_under",
+        "cell_promoted": True,
+        "threeway_hit": 75.4, "threeway_pick": _WIN,
+        "gn_hit": 49.2, "cn_hit": 0.0, "n_fixtures": 65,
         "promote_status": "PASS",
     },
 }
@@ -165,6 +188,11 @@ V3_MARKETS: dict[tuple[str, str], dict[str, dict[str, Any]]] = {
         "dnb":      {"line": None, "hit": 88.6, "n":  783, "odd_col": None},
         "goals_nl": {"line": 2.5,  "hit": 48.5, "n":  783, "odd_col": _GL25},
     },
+    ("low", "strong_over"): {
+        "dnb":      {"line": None, "hit": 74.0, "n":  639, "odd_col": None},
+        "goals_nl": {"line": 2.5,  "hit": 67.1, "n":  639, "odd_col": _GL25},
+    },
+    # ("low", "strong_under") deferred — n=18 too small (see PROMOTED_CELLS note).
     # -- one_sided (2 emits per cell — Golden Rule) ------------------------
     ("one_sided", "slight_over"): {
         "alpha_win": {"line": None, "hit": 72.5, "n": 2215, "odd_col": None},
@@ -173,6 +201,14 @@ V3_MARKETS: dict[tuple[str, str], dict[str, dict[str, Any]]] = {
     ("one_sided", "slight_under"): {
         "alpha_win": {"line": None, "hit": 77.1, "n": 1307, "odd_col": None},
         "goals_nl":  {"line": 2.5,  "hit": 61.1, "n": 1307, "odd_col": _GL25},
+    },
+    ("one_sided", "strong_over"): {
+        "alpha_win": {"line": None, "hit": 60.5, "n":  210, "odd_col": None},
+        "goals_nl":  {"line": 2.5,  "hit": 67.6, "n":  210, "odd_col": _GL25},
+    },
+    ("one_sided", "strong_under"): {
+        "alpha_win": {"line": None, "hit": 75.4, "n":   65, "odd_col": None},
+        "goals_nl":  {"line": 2.5,  "hit": 49.2, "n":   65, "odd_col": _GL25},
     },
 }
 

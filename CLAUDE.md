@@ -28,18 +28,18 @@ These rules exist because Sessions 12–18 drifted away from Project 1 — DF go
 6. **Foundation matrix splits on T1 and T2+T3.** Tier slices live; mixed tiers are noise.
 7. **No team form / position / predicted-uncertainty weighting.** Only odds drivers (zone × bts) + H2H corner counts (counts, not averages) are valid signals. Anything beyond those is research, not engine.
 
-## Current state — Golden Rule (Session 19+, 2026-05-28)
+## Current state — V3 Golden Rule + strong-BTS expansion (Session 19+, 2026-05-28)
 
-9 active cells × Golden-Rule market set = **21 emit channels**. Per-fixture emits per Notes 28-05-26.docx:
+12 active cells × Golden-Rule market set = **27 emit channels**. Per-fixture emits per Notes 28-05-26.docx:
 
 - **strong** × {slight_over, slight_under} → `goals_nl` (Over 1.5) + `dnb` — 2 emits per cell
 - **standard** × {slight_over, strong_over, slight_under} → `goals_nl` + `corners_nl` (Over 8.5) + `dnb` — 3 emits per cell
-- **low** × {slight_over, slight_under} → `dnb` + `goals_nl` (Over 2.5, low natural line) — 2 emits per cell
-- **one_sided** × {slight_over, slight_under} → `alpha_win` + `goals_nl` (Over 2.5) — 2 emits per cell
+- **low** × {slight_over, slight_under, strong_over} → `dnb` + `goals_nl` (Over 2.5, low natural line) — 2 emits per cell
+- **one_sided** × {slight_over, slight_under, strong_over, strong_under} → `alpha_win` + `goals_nl` (Over 2.5) — 2 emits per cell
+
+**"High" BTS pockets (strong_over / strong_under) added in low + one_sided** per operator clarification — these are the cells with high BTS sentiment (strong yes-favoured OR strong no-favoured) which Notes 28-05-26.docx pairs with the favourite-heavy zones. Deferred only: `low:strong_under` (n=18 too small; re-evaluate after 6 weeks of post-overlay settlement).
 
 **Why two emits per fixture:** the 3-way pick (DNB or alpha_win) measures the market's structural confidence in the favourite; the line pick (goals_nl or corners_nl) measures the over-total expectation. Both are natural-line by zone — no system-line or effective-line fallbacks. The 3-picks-log layer (deferred) chooses which combination of legs to assemble into a practical bet based on edge vs bookmaker price.
-
-**Pre-overlay V3 fired only the line pick per zone** (goals_nl in strong, goals_nl+corners_nl in standard, dnb in low, alpha_win in one_sided — 1-2 emits per cell). Session 19 Golden-Rule extension adds the missing 3-way / line pick per cell. Cell list is unchanged from Session 11; the emit set per cell is upgraded to match the operator's intent.
 
 ## Zone boundaries (raw-notes overlay)
 
@@ -107,7 +107,7 @@ Same as before — Task Scheduler runs the 12 jobs from `setup_scheduler.ps1`. M
 - Once recalibrated, decide whether DF should be re-introduced as a partition refinement (or stay an analytical signal). Until then, rule 1 holds.
 - **3-picks-log layer (deferred build):** new SPA tab + `bet_tickets` table per Notes expand 28-05-26. Translates V3 emits into practical multibet / system-bet structures with 72-hour locked windows. All EV / breakeven math lives here, not in the engine. Runs in parallel to the 6-week watch and gives faster feedback on whether the structural edge translates to +EV at bookmaker prices.
 - Project 3 (live odds comparison vs breakeven) stays in draft in the AI Website folder. Build only after Project 1 validates under the new boundaries.
-- Possible cell expansion: `low:strong_over` (n=639, dnb 74%, g25 67%) and `one_sided:strong_over` (n=210, alpha_win 60.5%) are not in `V3_ACTIVE` yet. The operator's "BTS pockets high for 2 emits" phrasing in Notes 28-05-26 may want these. Decision deferred until the operator confirms.
+- `low:strong_under` (n=18) remains deferred — re-evaluate after 6-week post-overlay settlement when sample grows. All other "high BTS" cells (low:strong_over, one_sided:strong_over, one_sided:strong_under) added Session 19+ per operator clarification.
 
 ## Reference documents
 

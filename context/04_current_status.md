@@ -14,7 +14,7 @@ Last updated: 2026-05-28 (Session 19 — V3 restoration + raw-notes zone overlay
 | ngrok | https://steadier-legwarmer-finlike.ngrok-free.dev |
 | DB | `data/oddsflow_v4.db` |
 | GitHub | `github.com/kklefoka-arch/OddsFlowV4` |
-| Active policy | **V3 + Golden Rule (Session 19+)** — `static_policy.V3_ACTIVE`, 9 cells, 2-key. 21 emit channels (2 emits/cell strong+low+one_sided, 3 emits/cell standard). |
+| Active policy | **V3 + Golden Rule + strong-BTS expansion (Session 19+)** — `static_policy.V3_ACTIVE`, 12 cells, 2-key. 27 emit channels (2/cell strong+low+one_sided, 3/cell standard). |
 | Zone boundaries | strong 2.90–3.30, standard 3.30–3.80, low 3.80–4.30, one_sided ≥4.30 (Session 19 raw-notes overlay) |
 | Fixtures | 51,057 total — 46,905 settled, 4,152 upcoming. draw_zone re-backfilled (8,145 updates). |
 | Fixture stats | 38,574 |
@@ -77,3 +77,4 @@ python settle.py            # write pick_results
 | 18 | 2026-05-27 | V3.1 DF-aware partition deployed (20 cells) — *the drift this session reversed* |
 | 19 | 2026-05-28 | **Second V3 restoration + raw-notes zone-boundary overlay**. DF removed everywhere. Boundaries 2.90/3.30/3.80/4.30. 8,145 draw_zone rows re-backfilled. Durable Rules pinned in CLAUDE.md to prevent re-drift. AI Website docs aligned. |
 | 19+ | 2026-05-28 | **Golden Rule extension** (Notes 28-05-26.docx). V3_MARKETS expanded: strong cells +dnb, standard cells +dnb, low cells +goals_nl O2.5, one_sided cells +goals_nl O2.5. Baselines re-computed under new boundaries. /picks?days=7 went from 201→332 emits across 130 fixtures. Kazakhstan 6-fixture day went from 7→13 emits, matching operator's "≥8" expectation. LogonType=S4U fix shipped to `setup_scheduler.ps1` so manual restarts work from any context. |
+| 19++ | 2026-05-28 | **Strong-BTS expansion.** Operator clarified "high BTS" in Golden Rule means strong_over / strong_under cells. Added `low:strong_over` (n=639, dnb 74%, g25 67.1%), `one_sided:strong_over` (n=210, aw 60.5% FLAG, g25 67.6%), `one_sided:strong_under` (n=65, aw 75.4%, g25 49.2%). Deferred: `low:strong_under` (n=18 too small). V3_ACTIVE now 12 cells / 27 emit channels. /picks?days=7 332→348 emits across 138 fixtures. partition_not_promoted dropped 8→0. Durable Rule 0 pinned (engine reads structural patterns from odds, not form/position/attack — bookmaker odds are the market's compressed consensus). Session 19 closed. |
