@@ -19,6 +19,7 @@ Football betting analytics engine. Ingests pre-match fixtures and odds from Spor
 
 These rules exist because Sessions 12–18 drifted away from Project 1 — DF got introduced as a partition key, EV calibration findings retrofitted into the engine, doc state diverged. Session 19 (this) restores the framework. Future sessions must hold this line.
 
+0. **The engine reads structural patterns from odds, not from form/position/attack stats.** Bookmaker odds (`draw_odd`, `btts_yes/no_odd`, `home_odd`, `away_odd`) are the market's compressed consensus across every signal a traditional analyst would weigh. The (zone × bts) partition reveals the structural regions where outcomes concentrate — and the engine's edge is reading those regions directly, not re-deriving them from surface features. When an engine pick disagrees with conventional analysis ("they're in poor form", "their attack is weak"), trust the partition's historical hit rate. The market priced what it priced for a reason; the engine reads that pricing back. Results validate; pundits don't.
 1. **No DF as partition.** `df_of()` is removed from `classify.py`. The partition is `(zone, bts_pocket)`, 2-key. DF stays in the AI-Website analysis folder as a signal that may inform a *future* iteration only after step 4 below is satisfied.
 2. **No EV / economic models in the live engine.** Breakeven odds, EV, Wilson intervals — all stay in the analysis folder. The live engine measures, emits, settles, and reports hit rate. Nothing else gates picks.
 3. **Hit rate is the V3 non-loss convention.** `(wins + voids) / settled`. Voids (DNB draws) count as hits. Wilson is out.
@@ -27,18 +28,18 @@ These rules exist because Sessions 12–18 drifted away from Project 1 — DF go
 6. **Foundation matrix splits on T1 and T2+T3.** Tier slices live; mixed tiers are noise.
 7. **No team form / position / predicted-uncertainty weighting.** Only odds drivers (zone × bts) + H2H corner counts (counts, not averages) are valid signals. Anything beyond those is research, not engine.
 
-## Current state
+## Current state — Golden Rule (Session 19+, 2026-05-28)
 
-- 9 active cells (`static_policy.V3_ACTIVE`):
-  - **strong** × {slight_over, slight_under} → goals_nl (Over 1.5)
-  - **standard** × {slight_over, strong_over, slight_under} → goals_nl + corners_nl (Over 8.5)
-  - **low** × {slight_over, slight_under} → dnb
-  - **one_sided** × {slight_over, slight_under} → alpha_win
-- **Markets fired:** goals_nl, corners_nl, dnb, alpha_win. Same four markets the Session 11 screenshot showed.
-- **Pick map by zone (V3):**
-  - strong / standard → DNB on 3-way; goals_nl + corners_nl on totals
-  - low → DNB on 3-way (operator-confirmed: do not switch to alpha_win without 6-week validation)
-  - one_sided → alpha_win on 3-way
+9 active cells × Golden-Rule market set = **21 emit channels**. Per-fixture emits per Notes 28-05-26.docx:
+
+- **strong** × {slight_over, slight_under} → `goals_nl` (Over 1.5) + `dnb` — 2 emits per cell
+- **standard** × {slight_over, strong_over, slight_under} → `goals_nl` + `corners_nl` (Over 8.5) + `dnb` — 3 emits per cell
+- **low** × {slight_over, slight_under} → `dnb` + `goals_nl` (Over 2.5, low natural line) — 2 emits per cell
+- **one_sided** × {slight_over, slight_under} → `alpha_win` + `goals_nl` (Over 2.5) — 2 emits per cell
+
+**Why two emits per fixture:** the 3-way pick (DNB or alpha_win) measures the market's structural confidence in the favourite; the line pick (goals_nl or corners_nl) measures the over-total expectation. Both are natural-line by zone — no system-line or effective-line fallbacks. The 3-picks-log layer (deferred) chooses which combination of legs to assemble into a practical bet based on edge vs bookmaker price.
+
+**Pre-overlay V3 fired only the line pick per zone** (goals_nl in strong, goals_nl+corners_nl in standard, dnb in low, alpha_win in one_sided — 1-2 emits per cell). Session 19 Golden-Rule extension adds the missing 3-way / line pick per cell. Cell list is unchanged from Session 11; the emit set per cell is upgraded to match the operator's intent.
 
 ## Zone boundaries (raw-notes overlay)
 
@@ -52,7 +53,7 @@ Updated Session 19 from the original V3 cutoffs because one_sided fixtures crept
 | `low` | `3.80 ≤ draw_odd < 4.30` | Was 4.10–4.80 under V3 prior — too wide, picked up extreme favourites |
 | `one_sided` | `draw_odd ≥ 4.30` | Was ≥ 4.80 — pulled down so genuine one-sided favourites are isolated |
 
-Old V3 baseline hit rates in `static_policy.V3_MARKETS` were computed against the prior cutoffs. They remain in place as reference until 6 weeks of live settlement under the new boundaries provides a recalibration baseline.
+Baselines in `static_policy.V3_MARKETS` and `PROMOTED_CELLS` are now computed under the post-overlay boundaries (Session 19) — see the file header. The 6-week settlement watch validates whether they hold up live.
 
 ## Key files
 
@@ -91,10 +92,10 @@ Same as before — Task Scheduler runs the 12 jobs from `setup_scheduler.ps1`. M
 - **V3 restored (Session 19, 2026-05-28).** Picks fire from `V3_ACTIVE` (9 cells, 2-key). DF removed from classify and from all route lookups. `compute_foundation()` still serves the `/api/foundation` display.
 - **Zone boundaries shifted to raw-notes overlay** (2.90 / 3.30 / 3.80 / 4.30). Fixtures DB re-backfilled — 8,145 `draw_zone` updates.
 - **`df_level` columns retained on fixtures + emit_log** as additive historical metadata. New emit rows write NULL.
-- **Markets unchanged from V3:** goals_nl Over 1.5 (strong, standard), corners_nl Over 8.5 (standard only), dnb (low — confirmed per Session 11 screenshot), alpha_win (one_sided).
-- **Goals NL pick label** "Over 1.5 Goals" — `settle.py` regex `r"Over (\d+\.5) Goals"`.
+- **Markets per Golden Rule (Session 19 extension):** strong → goals_nl O1.5 + dnb; standard → goals_nl O1.5 + corners_nl O8.5 + dnb; low → dnb + goals_nl O2.5; one_sided → alpha_win + goals_nl O2.5.
+- **Goals NL pick label** parses via regex `r"Over (\d+\.5) Goals"` — both `Over 1.5 Goals` (strong/standard) and `Over 2.5 Goals` (low/one_sided) settle correctly.
 - **Corners NL pick label** "Over 8.5 Corners" — `settle.py` regex `r"Over (\d+\.5) Corners"`.
-- **Goals NL natural-line only** — no effective-line fallback. `pick_odd` NULL on most goals_nl / all corners_nl rows is expected; SPA renders `—` via `fmt.odd`.
+- **Goals NL natural-line only by zone** — Over 1.5 for strong/standard, Over 2.5 for low/one_sided. No effective-line fallback. `pick_odd` NULL on most goals_nl / all corners_nl rows is expected; SPA renders `—` via `fmt.odd`.
 - **`write_emit_log()`** supersedes stale unsettled picks when alpha team label changes.
 - **fetch_upcoming.py** stores full kickoff datetimes; monthly windows; max_pages=30 (Jul–Oct), =20 elsewhere.
 - **`fixtures.league_id`** stores internal DB `leagues.id` (via `_league_id_map`).
@@ -102,9 +103,11 @@ Same as before — Task Scheduler runs the 12 jobs from `setup_scheduler.ps1`. M
 
 ## Pending / next
 
-- Monitor V3 settlement under new boundaries for 6 weeks. Recalibrate baseline hit rates after that.
+- Monitor V3 + Golden Rule settlement under new boundaries for 6 weeks. Recalibrate baseline hit rates after that.
 - Once recalibrated, decide whether DF should be re-introduced as a partition refinement (or stay an analytical signal). Until then, rule 1 holds.
+- **3-picks-log layer (deferred build):** new SPA tab + `bet_tickets` table per Notes expand 28-05-26. Translates V3 emits into practical multibet / system-bet structures with 72-hour locked windows. All EV / breakeven math lives here, not in the engine. Runs in parallel to the 6-week watch and gives faster feedback on whether the structural edge translates to +EV at bookmaker prices.
 - Project 3 (live odds comparison vs breakeven) stays in draft in the AI Website folder. Build only after Project 1 validates under the new boundaries.
+- Possible cell expansion: `low:strong_over` (n=639, dnb 74%, g25 67%) and `one_sided:strong_over` (n=210, alpha_win 60.5%) are not in `V3_ACTIVE` yet. The operator's "BTS pockets high for 2 emits" phrasing in Notes 28-05-26 may want these. Decision deferred until the operator confirms.
 
 ## Reference documents
 

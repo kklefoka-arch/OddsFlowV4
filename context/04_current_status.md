@@ -14,7 +14,7 @@ Last updated: 2026-05-28 (Session 19 — V3 restoration + raw-notes zone overlay
 | ngrok | https://steadier-legwarmer-finlike.ngrok-free.dev |
 | DB | `data/oddsflow_v4.db` |
 | GitHub | `github.com/kklefoka-arch/OddsFlowV4` |
-| Active policy | **V3** (Session 11 baseline) — `static_policy.V3_ACTIVE`, 9 cells, 2-key (zone × bts) |
+| Active policy | **V3 + Golden Rule (Session 19+)** — `static_policy.V3_ACTIVE`, 9 cells, 2-key. 21 emit channels (2 emits/cell strong+low+one_sided, 3 emits/cell standard). |
 | Zone boundaries | strong 2.90–3.30, standard 3.30–3.80, low 3.80–4.30, one_sided ≥4.30 (Session 19 raw-notes overlay) |
 | Fixtures | 51,057 total — 46,905 settled, 4,152 upcoming. draw_zone re-backfilled (8,145 updates). |
 | Fixture stats | 38,574 |
@@ -76,3 +76,4 @@ python settle.py            # write pick_results
 | 17 | 2026-05-27 | Enhanced analysis built from raw-notes spec — DF separation evidence, 6-pocket BTS |
 | 18 | 2026-05-27 | V3.1 DF-aware partition deployed (20 cells) — *the drift this session reversed* |
 | 19 | 2026-05-28 | **Second V3 restoration + raw-notes zone-boundary overlay**. DF removed everywhere. Boundaries 2.90/3.30/3.80/4.30. 8,145 draw_zone rows re-backfilled. Durable Rules pinned in CLAUDE.md to prevent re-drift. AI Website docs aligned. |
+| 19+ | 2026-05-28 | **Golden Rule extension** (Notes 28-05-26.docx). V3_MARKETS expanded: strong cells +dnb, standard cells +dnb, low cells +goals_nl O2.5, one_sided cells +goals_nl O2.5. Baselines re-computed under new boundaries. /picks?days=7 went from 201→332 emits across 130 fixtures. Kazakhstan 6-fixture day went from 7→13 emits, matching operator's "≥8" expectation. LogonType=S4U fix shipped to `setup_scheduler.ps1` so manual restarts work from any context. |
