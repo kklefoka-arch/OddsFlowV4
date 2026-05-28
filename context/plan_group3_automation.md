@@ -2,8 +2,8 @@
 ## Gaps: G5 (manual settle), G6 (no cron/scheduler)
 
 **Phase connection:** Phase 8 (Score Update) → Phase 9 (Settle) → Phase 1 (Fetch, daily)
-**Status:** PLANNED — not yet implemented
-**Dependency:** Group 1 must be scoped first — livescores path in Group 1 directly reduces Group 3 scope.
+**Status:** IMPLEMENTED in Sessions 6 + 13 + 15 + 18. `run_daily.ps1` exists (4-step chain incl. emit_picks). `setup_scheduler.ps1` registers 12 Task Scheduler jobs (Europe + SA + Dawn SA windows + refresh_odds + refresh_stats + server + ngrok). All daily scripts write `system_health` heartbeats. Retained as audit trail.
+**Dependency:** Group 1 livescores path is implemented; the additional Task Scheduler jobs remain to cover non-livescores windows.
 
 ---
 

@@ -1,4 +1,4 @@
-# OddsFlow V4 — System Language
+# OddsFlow V4 — System Language (V3.1)
 
 Every term this system uses, defined exactly. When something is requested, reported, or questioned — this is the reference for what it means, where it lives, and what it connects to.
 
@@ -8,241 +8,185 @@ Every term this system uses, defined exactly. When something is requested, repor
 
 ### Fixture
 A single football match. Lives in the `fixtures` table.
-- **Upcoming fixture**: `home_score IS NULL` — match has not been settled yet
-- **Settled fixture**: `home_score IS NOT NULL` — match result is in the DB
-- **Classifiable fixture**: has `draw_odd`, `btts_yes_odd`, `btts_no_odd` (all not NULL)
+- **Upcoming fixture:** `home_score IS NULL` — not yet played.
+- **Settled fixture:** `home_score IS NOT NULL` — result in DB.
+- **Classifiable fixture:** has `draw_odd`, `btts_yes_odd`, `btts_no_odd`, plus `home_odd` and `away_odd` for DF.
 
 ### Odds
-The bookmaker prices attached to a fixture. Five are used by this system:
-| Field | What it is |
-|-------|-----------|
-| `home_odd` | 1X2 price for home win |
-| `draw_odd` | 1X2 price for draw |
-| `away_odd` | 1X2 price for away win |
-| `btts_yes_odd` | Both Teams To Score — Yes price |
-| `btts_no_odd` | Both Teams To Score — No price |
+Bookmaker prices on a fixture. V3.1 reads:
 
-Other odds exist in the schema (`goals_over_*`, `corners_over_*`) but are not currently extracted or used.
+| Field | Market |
+|-------|--------|
+| `home_odd` / `draw_odd` / `away_odd` | 1X2 (Sportmonks market 1) |
+| `btts_yes_odd` / `btts_no_odd` | BTTS (Sportmonks market 14) |
+| `goals_over_15_odd` / `goals_over_25_odd` / `goals_over_35_odd` | Goal Line (market 7) |
+| `corners_over_75_odd` / `corners_over_85_odd` / `corners_over_95_odd` | Corners totals |
+
+The Over 1.5 goals and Over 8.5 corners prices are frequently NULL because bookmakers rarely quote trivial overs. This is expected.
 
 ### Alpha Team
-The team with the lower (more favoured) 1X2 odd. `home_odd ≤ away_odd` → home is alpha. Used to determine which team the pick is on and to compute the DNB odd.
+The team with the lower 1X2 odd. `home_odd ≤ away_odd` → alpha is home. Used for DNB / alpha_win pick labels.
 
 ### Draw Zone
-Classification of a fixture based on its `draw_odd`. Represents how likely a draw is.
-See: `zone_of()` in `app/engine/classify.py`. See Phase 3 in `06_process_flow.md`.
+Fixture classification from `draw_odd`. See `zone_of()` in `app/engine/classify.py`.
+
+### DF (Difference Factor)
+Fixture classification from rounded `|home_odd − away_odd|`. DF0 (diff < 0.5) / DF1 (0.5 ≤ diff < 1.5) / DF2 (diff ≥ 1.5). See `df_of()`. V3.1 introduces DF as the third partition axis.
 
 ### BTS Pocket
-Classification of a fixture based on its `btts_yes_odd` and `btts_no_odd`. Represents market expectation of whether both teams score.
-See: `bts_of()` in `app/engine/classify.py`. See Phase 3 in `06_process_flow.md`.
+Fixture classification from BTTS odds. See `bts_of()`.
 
 ### Cell
-A (draw_zone × bts_pocket) combination. There are up to 16 cells (4 zones × 4 pockets). Each cell accumulates historical hit rates and receives a promotion decision. The foundation matrix is a table of cells.
+A `(zone, df, bts_pocket)` triple. 4 × 3 × 4 = 48 possible, 20 active in V3.1. Stored as partition key `zone:DF:bts_pocket` (e.g. `standard:DF1:slight_over`).
 
 ### Tier
-League quality tier. Assigned in `ACTIVE_LEAGUES` in `fetch_upcoming.py`.
-- Tier 1: Top leagues (Premier League, La Liga, Serie A, etc.)
-- Tier 2: Second-tier leagues
-- Tier 3: Third-tier leagues
-Stored in `fixtures.tier` and `leagues.tier`.
+League quality tier (1, 2, or 3). Stored in `fixtures.tier` and `leagues.tier`. Drives the T1 / T2+T3 / ALL Analysis-tab splits.
 
 ---
 
-## Classification Terms
+## Promotion Terms (V3.1)
 
-### Classify
-To assign a fixture to a (draw_zone, bts_pocket) cell from its odds. Done by `classify_fixture()`. Stateless — computed on-the-fly, not stored. A fixture is classifiable only if it has `draw_odd`, `btts_yes_odd`, and `btts_no_odd`.
+### V3_ACTIVE
+The authoritative pick policy. Dict keyed by `(zone, df, bts)` → market config. Imported by `routes_picks.py`. **This is what fires picks.** Source: `app/engine/static_policy.py`.
 
-### Natural Line
-The expected total (goals or corners) for fixtures in a given draw zone. `natural_line(zone, market)`. Used as the lower threshold in foundation matrix computation (gn_hit, cn_hit). See `app/engine/natural_lines.py`.
+### V3_MARKETS
+Full per-cell market definition: `line`, `hit` (historical), `n` (sample size), `odd_col` (column on `fixtures` to read the pick odd from). `V3_ACTIVE` is `V3_MARKETS` filtered by `LOW_ZONE_SUPPRESS`.
 
-### System Line
-One step above the natural line. `system_line(zone, market)`. Used as the upper threshold (gs_hit, cs_hit). The gap between natural hit and system hit is called the **drop**.
+### PROMOTED_CELLS
+Compatibility dict consumed by `routes_inspector.py` and `routes_reports.py`. Same 20 keys as `V3_ACTIVE` plus metadata (`threeway_hit`, `promote_status`).
 
-### Drop
-`natural_hit - system_hit` (percentage points). Measures fragility: a high drop means performance is barely clearing the natural line and collapses at the system line. Lower drop = more robust.
+### LOW_ZONE_SUPPRESS
+Boolean flag. `False` in `static_policy.py` (low zone fires DNB picks). `True` in `promotion.py` (foundation matrix display marks low cells `MEASURING`). The split is intentional.
 
-### Drop Rank
-Within a zone, cells are ranked by drop (ascending). Rank 1 = lowest drop = best performance structure. Used in PROMOTE_TOLERANCE qualification.
+### Promote Status
+String tag on a cell: `PASS`, `MARGINAL`, `FLAG`. Set at calibration time; surfaces in dashboards but does not gate picks.
 
----
-
-## Promotion Terms
-
-### Calibration
-The process of computing hit rates and promotion status for each cell across all settled fixtures. Done by `compute_foundation()`. Not a one-time setup — recalculated on every `/api/foundation` or `/picks` call.
-
-### Baseline
-The historical threeway hit rate for a cell, as computed by the foundation matrix across all 28,477+ settled fixtures. This is the reference number. Drift is measured against the baseline.
-
-### Foundation Matrix
-The full table of cells with their hit rates and promotion statuses. Produced by `load_foundation()` + `compute_foundation()`. Served at `GET /api/foundation`.
-
-### Promoted Cell
-A cell where `threeway_promote` is `PROMOTE` or `PROMOTE_TOLERANCE` and `zone != "low"`. This is what determines whether a fixture generates a pick. **V4 uses threeway promotion only.** Goals and corners promotion exist in the matrix but do not drive picks.
-
-### PROMOTE
-`threeway_hit ≥ 72.0%`. Hard promotion — cell consistently supports alpha win or draw.
-
-### PROMOTE_TOLERANCE
-`67.5% ≤ threeway_hit < 72.0%` AND drop rank qualifies (rank 1, or drop ≤ rank-1 drop + 4.5pp). Softer promotion with structural qualification.
-
-### HOLD
-`67.5% ≤ threeway_hit < 72.0%` but drop rank fails. Not promoted — performance is in range but structurally fragile.
-
-### NO
-`threeway_hit < 67.5%`. Not promoted.
-
-### MEASURING
-Cell would be PROMOTE or PROMOTE_TOLERANCE but `zone = "low"`. Suppressed — not enough data, accumulating. Low zone is excluded from pick generation.
-
-### `cell_promoted`
-True if ANY of goals_promote, corners_promote, threeway_promote is PROMOTE or PROMOTE_TOLERANCE. Used for display in the Analysis tab. NOT what drives picks — picks use `threeway_promote` only. The `summary.promoted_cells` count reflects threeway-promoted cells only.
+### Compute Foundation
+`compute_foundation(load_foundation(conn))` — computes the live foundation matrix from all settled fixtures. Used **for display only** (Analysis tab). Has its own PROMOTE / PROMOTE_TOLERANCE / HOLD / NO classification independent of V3.1.
 
 ---
 
 ## Pick Terms
 
 ### Pick
-A recommendation generated for a specific upcoming fixture in a promoted cell.
-- **Market**: DNB or Alpha Win
-- **Pick label**: the alpha team's name
-- **Pick odd**: the derived price
+A market-specific recommendation generated for an upcoming fixture in a V3.1-active cell.
 
-### DNB (Draw No Bet)
-Market for strong and standard draw zones. Bet on the alpha team:
-- Alpha wins → WIN (1.0)
-- Draw → VOID (0.5, stake returned)
-- Alpha loses → LOSS (0.0)
-
-DNB odd is derived: `(1 - p_draw) / p_alpha` where `p = 1/odd`.
-
-### Alpha Win
-Market for one_sided draw zone. Bet on the alpha team to win outright:
-- Alpha wins → WIN (1.0)
-- Draw → LOSS (0.0)
-- Alpha loses → LOSS (0.0)
-
-Alpha Win odd = `min(home_odd, away_odd)`.
+| Market | Label | Pick odd source |
+|--------|-------|-----------------|
+| `goals_nl` | `"Over 1.5 Goals"` | `fixtures.goals_over_15_odd` (often NULL) |
+| `corners_nl` | `"Over 8.5 Corners"` | `fixtures.corners_over_85_odd` (almost always NULL) |
+| `dnb` | Alpha team name | Derived `(1 − p_draw) / p_alpha` |
+| `alpha_win` | Alpha team name | `min(home_odd, away_odd)` |
 
 ### Emit
-The act of writing a pick to `emit_log`. Idempotent — same fixture + market + pick always produces the same `pick_uuid`. Running `/picks` multiple times is safe.
+The act of writing a pick to `emit_log`. Idempotent via `pick_uuid = sha256("{fixture_id}:{market}:{pick}")[:36]`.
 
-### `pick_uuid`
-`SHA256("{fixture_id}:{market}:{pick_label}")[:36]`. Unique identifier for a pick. Primary key of `emit_log`. Also references `pick_results`.
+### `write_emit_log()`
+Supersede + insert helper in `routes_picks.py`. Before inserting, deletes any stale unsettled pick on the same `(fixture_id, market)` with a different `pick_uuid` (handles alpha team changes mid-window).
 
-### `emit_log`
-The record of every pick that has been emitted. Each row: which fixture, which cell, which market, which pick, what odd, when emitted. This is the system's record of what it recommended and when.
+### Confidence
+`threeway_hit / 100`. Stored on each emit row for reference.
 
-### `confidence`
-`threeway_hit / 100` — stored in `emit_log`. The cell's historical hit rate expressed as a decimal (e.g., 0.749 for 74.9%).
+### `pick_odd` NULL
+Expected on most goals_nl and all corners_nl rows. Frontend renders `—` via `fmt.odd`. EV will come from Project 3 (breakeven vs live bookmaker price) — not from the stored value.
 
 ---
 
 ## Settlement Terms
 
 ### Settle
-To resolve a pick's outcome against the final match result. Produces WIN / VOID / LOSS.
-Done by `settle_pick()` (in `routes_picks.py`) and `settle.py`.
-
-**Not the same as "emit"**. Emitting happens before the match. Settling happens after.
+Resolve a pick into WIN / VOID / LOSS against the fixture result.
+- Persistent: `settle.py` writes `pick_results`.
+- On-the-fly: `routes_reports.py` and `routes_diagnostics.py` run `settle_pick()` in memory from emit_log + fixtures + fixture_stats. Used for windows / dashboards that don't need to wait for `settle.py`.
 
 ### `pick_results`
-The table of settled outcomes. Written by `settle.py`. One row per `pick_uuid`. Fields: settled_at, outcome (WIN/VOID/LOSS), actual_value (1.0/0.5/0.0).
+| Field | Type | Notes |
+|-------|------|-------|
+| `pick_uuid` | TEXT | FK to emit_log |
+| `settled_at` | TEXT | ISO |
+| `outcome` | TEXT | `WIN` / `LOSS` / `VOID` — use this for filters |
+| `actual_value` | REAL | `1.0` / `0.0` / `0.5` — use this for arithmetic |
 
-### On-the-fly settlement
-Computing outcomes in memory from `emit_log` + fixture scores, without reading `pick_results`. Done by `routes_reports.py` (`emit_performance`, `emit_recent`). Works as long as fixture scores are in the DB. Does NOT require `settle.py` to have run.
+String-vs-number comparisons in SQLite mix storage classes — never use `outcome >= 1`.
 
-### Persistent settlement
-Outcomes written to `pick_results` by `settle.py`. Required for Inspector calendar (`daily_calendar`) and Inspector settled view (`recent_settled`).
+### Outcome rules
 
-### Outcome values
-| Label | `actual_value` | Meaning |
-|-------|---------------|---------|
-| WIN | 1.0 | Pick hit |
-| VOID | 0.5 | Draw, stake returned (DNB only) |
-| LOSS | 0.0 | Pick failed |
+| Market | WIN | VOID | LOSS |
+|--------|-----|------|------|
+| goals_nl | `total_goals > line` | — | else |
+| corners_nl | `total_corners > line` | — (skipped if NULL) | else |
+| dnb | alpha wins | draw | alpha loses |
+| alpha_win | alpha wins | — | draw OR alpha loses |
 
 ---
 
 ## Drift Terms
 
 ### Drift
-The difference between a cell's recent hit rate and its historical baseline.
-`gap_pp = recent_hit - baseline_hit` (in percentage points).
+`gap_pp = recent_hit − baseline_hit`. Baseline is the V3.1 historical hit per cell from `V3_MARKETS[…]["hit"]`. Recent is the rolling-window non-loss rate from settled emit_log rows.
 
-### Drift Flag
-| Flag | Condition | Meaning |
-|------|-----------|---------|
-| `stable` | gap > -5pp | Recent performance matches baseline |
-| `watch` | -10pp < gap ≤ -5pp | Underperforming — monitor |
-| `drifting` | gap ≤ -10pp | Significantly underperforming — review promotion |
-| `no_data` | < 10 settled emits | Too few settled picks to evaluate |
+### Drift flag
+
+| Flag | Condition |
+|------|-----------|
+| `stable` | gap > −5pp |
+| `watch` | −10pp < gap ≤ −5pp |
+| `drifting` | gap ≤ −10pp |
+| `no_data` | recent_n < 10 |
 
 ---
 
 ## Reporting Terms
 
-### Emit Performance
-Multi-window summary (1d/3d/7d/30d/90d/180d) of pick outcomes. On-the-fly settlement from emit_log. Route: `GET /reports/emit_performance`.
-
-### Emit Recent
-Per-fixture readback of what was emitted and how it resolved. On-the-fly. Route: `GET /reports/emit_recent`.
-
-### Settle Activity
-Per-day settlement counts from `pick_results`. Requires settle.py to have run. Route: `GET /reports/settle_activity`.
-
-### Market Breakdown
-Per-(zone, bts, market, pick) hit rates. On-the-fly. Route: `GET /reports/emit_market_breakdown`.
-
-### Inspector
-The pre-match and post-match monitoring interface. Contains:
-- **Partition Drift**: per-cell drift across all promoted cells
-- **Recent Settled**: fixtures with settled picks (reads pick_results)
-- **Daily Calendar**: per-day win/void/loss counts (reads pick_results)
+| Route | Purpose |
+|-------|---------|
+| `/reports/emit_performance` | Multi-window hit-rate summary (legs + events) — on-the-fly |
+| `/reports/emit_recent` | Per-fixture readback with WIN/VOID/LOSS/PENDING — on-the-fly |
+| `/reports/emit_market_breakdown` | Per (zone, df, bts, market, pick) hit rates — on-the-fly |
+| `/reports/settle_activity` | Per-day settle counts from `pick_results` + last pipeline heartbeat |
+| `/inspector/partition_drift` | Per-cell drift across active V3.1 cells |
+| `/inspector/recent_settled` | Fixtures with settled picks, grouped |
+| `/inspector/similar` | Recent fixtures in the same cell (pre-match lens) |
+| `/inspector/daily_calendar` | Per-day WIN/VOID/LOSS calendar |
 
 ---
 
 ## Process Terms
 
-### Fetch
-Pull upcoming fixtures and odds from Sportmonks. Script: `fetch_upcoming.py`. Frequency: daily, manual.
-
-### Score Update
-Write fixture results (home_score, away_score, total_goals, corner stats) to the DB after matches are played. **[GAP]** — not yet built. Script would be `fetch_results.py`.
-
-### Settlement Run
-Execute `settle.py` after matches complete. Frequency: after each match day, manual.
-
-### Recalibrate
-Re-run `compute_foundation()`. Happens automatically on every `/api/foundation` or `/picks` call — no explicit step needed.
+| Term | Where |
+|------|-------|
+| Fetch | `fetch_upcoming.py` daily 08:00 SAST |
+| Intraday odds refresh | `refresh_odds.py` 14:30 SAST — 8h horizon |
+| Score update | `fetch_results.py` 23:30 / 03:00 / 06:00 SAST |
+| Corner backfill | `refresh_stats.py` 00:00 SAST — 14d lookback |
+| Settlement run | `settle.py` 23:45 / 03:15 / 06:15 SAST |
+| Emit pass | `emit_picks.py` 08:05 SAST — calls `/picks?days=3` |
+| Recalibrate | Implicit — every `/api/foundation` re-reads settled fixtures |
 
 ---
 
 ## Tables
 
 | Table | Purpose | Written by | Read by |
-|-------|---------|-----------|---------|
-| `leagues` | League reference | seed scripts | everywhere |
-| `teams` | Team reference | fetch_upcoming.py | fixtures joins |
-| `fixtures` | All fixture data (odds + results) | fetch_upcoming.py, [fetch_results.py GAP] | all routes |
-| `fixture_stats` | Corners + match stats | [GAP] | load_foundation |
-| `emit_log` | Pick emission record | routes_picks.py | reports, inspector, settle.py |
-| `pick_results` | Settled pick outcomes | settle.py | inspector/recent_settled, inspector/daily_calendar, reports/settle_activity |
-| `system_health` | Cron heartbeat | [automation GAP] | reports/settle_activity |
-| `h2h_meetings` | Head-to-head history | [not currently populated] | not currently used |
+|-------|---------|------------|---------|
+| `leagues` | League reference (+ Sportmonks id, tier) | `scripts/update_leagues.py`, fetch | everywhere |
+| `teams` | Team reference | `fetch_upcoming.py` | fixtures joins |
+| `fixtures` | All fixture data | `fetch_upcoming.py`, `refresh_odds.py`, `fetch_results.py` | all routes |
+| `fixture_stats` | Corner stats etc. for settled fixtures | `fetch_results.py`, `refresh_stats.py` | `load_foundation`, `settle.py` |
+| `emit_log` | Pick emission record | `routes_picks.py` | reports, inspector, settle |
+| `pick_results` | Settled pick outcomes | `settle.py` | inspector/recent_settled, daily_calendar, reports/settle_activity |
+| `system_health` | Heartbeats — `fetch_upcoming`, `fetch_results`, `settle`, `emit_picks`, `refresh_odds`, `refresh_stats`, legacy `cron_heartbeat` | every daily script | diagnostics, reports |
+| `h2h_meetings` | Head-to-head history | seed | (reserved for Project 3) |
 
 ---
 
 ## What Does Not Exist
 
-These are things that sound like they might exist or that are often referenced but are NOT built:
-
-| Missing | What it would do |
-|---------|-----------------|
-| `fetch_results.py` | Fetch match scores from Sportmonks and write to fixtures table |
-| Automated score update | Any cron / scheduler writing scores after matches |
-| Similar-odds history endpoint | Inspector pre-match lens showing historical fixtures with similar odds |
-| Cron / scheduler | Automated daily fetch + settle |
-| Goals/corners picks | Foundation matrix computes them; they are NOT used in V4 pick generation |
-| PRX9 | Retired — `GET /picks/prx9` returns empty |
-| Ingest pipeline for `draw_zone`/`bts_pocket` columns | Schema has them; nothing writes them |
+| Missing | Note |
+|---------|------|
+| PRX9 layer | Retired in V3.1 — `/picks/prx9` removed |
+| Effective-line fallback for goals_nl / corners_nl | Explicit policy — natural line only |
+| Goals/corners system-line picks | Foundation metrics only; not pick markets |
+| External cron daemon | Task Scheduler runs the 12 daily jobs |
+| Real-money execution | Engine recommends; KK places bets manually |
+| Live in-play pick generation | Picks fire on pre-match odds only |

@@ -15,6 +15,26 @@ router = APIRouter(prefix="/diagnostics", tags=["diagnostics"])
 
 
 # ---------------------------------------------------------------------------
+# Pipeline metrics
+# ---------------------------------------------------------------------------
+# V3.1 (2026-05-28): the daily pipeline is split across 12 Task Scheduler
+# jobs that each write their own metric. "cron freshness" = the most recent
+# row across any of these. "last clean run" = the most recent terminal step
+# (settle), since settle runs at the end of every daily window. The legacy
+# `cron_heartbeat` row from run_daily.ps1 is included for backwards-compat.
+_PIPELINE_METRICS: tuple[str, ...] = (
+    "cron_heartbeat",
+    "fetch_upcoming",
+    "emit_picks",
+    "refresh_odds",
+    "fetch_results",
+    "refresh_stats",
+    "settle",
+)
+_TERMINAL_METRIC = "settle"
+
+
+# ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
 
@@ -23,6 +43,29 @@ def _safe_count(conn: sqlite3.Connection, table: str) -> int | None:
         return conn.execute(f"SELECT COUNT(*) FROM {table}").fetchone()[0]
     except Exception:
         return None
+
+
+def _latest_pipeline_row(conn: sqlite3.Connection,
+                          metrics: tuple[str, ...] = _PIPELINE_METRICS):
+    """Most recent system_health row across any pipeline metric."""
+    placeholders = ",".join("?" * len(metrics))
+    return conn.execute(
+        f"""SELECT metric, recorded_at, value FROM system_health
+            WHERE metric IN ({placeholders})
+            ORDER BY recorded_at DESC LIMIT 1""",
+        metrics,
+    ).fetchone()
+
+
+def _latest_terminal_row(conn: sqlite3.Connection):
+    """Most recent terminal-step (settle) row, plus legacy cron_heartbeat with step=complete."""
+    return conn.execute(
+        """SELECT metric, recorded_at, value FROM system_health
+           WHERE metric = ?
+              OR (metric = 'cron_heartbeat' AND value LIKE '%step=complete%')
+           ORDER BY recorded_at DESC LIMIT 1""",
+        (_TERMINAL_METRIC,),
+    ).fetchone()
 
 
 # ---------------------------------------------------------------------------
@@ -72,13 +115,19 @@ def today_summary() -> dict[str, Any]:
                WHERE f.home_score IS NOT NULL"""
         ).fetchone()[0]
 
-        # Cron heartbeat
-        cron: dict[str, Any] = {"status": "never_fired", "age_hours": None, "last_clean_run": None}
+        # Cron heartbeat — V3.1 multi-metric.
+        # Freshness reflects the LATEST pipeline metric (any of fetch_upcoming,
+        # emit_picks, refresh_odds, fetch_results, refresh_stats, settle, or
+        # legacy cron_heartbeat). last_clean_run reflects the most recent
+        # terminal step (settle) — the end of any daily window.
+        cron: dict[str, Any] = {
+            "status": "never_fired",
+            "age_hours": None,
+            "last_metric": None,
+            "last_clean_run": None,
+        }
         try:
-            lh = conn.execute(
-                """SELECT recorded_at FROM system_health
-                   WHERE metric='cron_heartbeat' ORDER BY recorded_at DESC LIMIT 1"""
-            ).fetchone()
+            lh = _latest_pipeline_row(conn)
             if lh and lh["recorded_at"]:
                 try:
                     ts = datetime.fromisoformat(lh["recorded_at"].replace(" ", "T"))
@@ -87,20 +136,21 @@ def today_summary() -> dict[str, Any]:
                     age_h = round((now - ts).total_seconds() / 3600, 1)
                     cron["status"] = "fresh" if age_h <= 26 else ("warning" if age_h <= 48 else "stale")
                     cron["age_hours"] = age_h
+                    cron["last_metric"] = lh["metric"]
                 except Exception:
                     pass
-            lc = conn.execute(
-                """SELECT recorded_at FROM system_health
-                   WHERE metric='cron_heartbeat' AND value LIKE '%step=complete%'
-                   ORDER BY recorded_at DESC LIMIT 1"""
-            ).fetchone()
+            lc = _latest_terminal_row(conn)
             if lc and lc["recorded_at"]:
                 try:
                     ts = datetime.fromisoformat(lc["recorded_at"].replace(" ", "T"))
                     if ts.tzinfo is None:
                         ts = ts.replace(tzinfo=timezone.utc)
                     age_h = round((now - ts).total_seconds() / 3600, 1)
-                    cron["last_clean_run"] = {"recorded_at": lc["recorded_at"], "age_hours": age_h}
+                    cron["last_clean_run"] = {
+                        "recorded_at": lc["recorded_at"],
+                        "age_hours": age_h,
+                        "metric": lc["metric"],
+                    }
                 except Exception:
                     pass
         except Exception:
@@ -292,20 +342,21 @@ def odds_coverage() -> dict[str, Any]:
 
 @router.get("/cron/heartbeat")
 def cron_heartbeat() -> dict[str, Any]:
-    """Last cron heartbeat recorded in system_health."""
+    """Last pipeline heartbeat in system_health (any of the 12 daily tasks).
+
+    V3.1 (2026-05-28): broadened from `cron_heartbeat` only to any pipeline
+    metric. `metric` in the response identifies which task last reported.
+    """
     conn = get_conn(settings.sqlite_path)
     try:
-        row = conn.execute(
-            """SELECT recorded_at, value FROM system_health
-               WHERE metric='cron_heartbeat' ORDER BY recorded_at DESC LIMIT 1"""
-        ).fetchone()
+        row = _latest_pipeline_row(conn)
     except Exception:
         row = None
     finally:
         conn.close()
 
     if not row:
-        return {"recorded_at": None, "value": None, "stale": True}
+        return {"recorded_at": None, "value": None, "metric": None, "stale": True}
 
     now = datetime.now(tz=timezone.utc)
     try:
@@ -320,6 +371,7 @@ def cron_heartbeat() -> dict[str, Any]:
     return {
         "recorded_at": row["recorded_at"],
         "value":       row["value"],
+        "metric":      row["metric"],
         "stale":       stale,
     }
 

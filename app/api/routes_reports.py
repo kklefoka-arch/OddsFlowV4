@@ -271,27 +271,41 @@ def settle_activity(
             (cutoff_sql,),
         ).fetchall()
 
-        # System health — last cron heartbeat
+        # System health — V3.1 multi-metric pipeline heartbeats.
+        # last_clean = most recent terminal step (settle) or legacy step=complete.
+        # last_heartbeat = most recent across any pipeline metric.
         last_clean = None
         last_heartbeat = None
         try:
             lc = conn.execute(
-                """SELECT recorded_at, value FROM system_health
-                   WHERE metric='cron_heartbeat' AND value LIKE '%step=complete%'
+                """SELECT metric, recorded_at, value FROM system_health
+                   WHERE metric = 'settle'
+                      OR (metric = 'cron_heartbeat' AND value LIKE '%step=complete%')
                    ORDER BY recorded_at DESC LIMIT 1"""
             ).fetchone()
             if lc:
-                last_clean = {"recorded_at": lc["recorded_at"], "value": lc["value"]}
+                last_clean = {
+                    "recorded_at": lc["recorded_at"],
+                    "value":       lc["value"],
+                    "metric":      lc["metric"],
+                }
         except Exception:
             pass
         try:
             lh = conn.execute(
-                """SELECT recorded_at, value FROM system_health
-                   WHERE metric='cron_heartbeat'
+                """SELECT metric, recorded_at, value FROM system_health
+                   WHERE metric IN (
+                       'cron_heartbeat','fetch_upcoming','emit_picks','refresh_odds',
+                       'fetch_results','refresh_stats','settle'
+                   )
                    ORDER BY recorded_at DESC LIMIT 1"""
             ).fetchone()
             if lh:
-                last_heartbeat = {"recorded_at": lh["recorded_at"], "value": lh["value"]}
+                last_heartbeat = {
+                    "recorded_at": lh["recorded_at"],
+                    "value":       lh["value"],
+                    "metric":      lh["metric"],
+                }
         except Exception:
             pass
 

@@ -2,8 +2,8 @@
 ## Gaps: G2 (draw_zone/bts_pocket unwritten), G3 (ghost fixtures)
 
 **Phase connection:** Phase 1 (Fetch/Land) → Phase 3 (Classify)
-**Status:** PLANNED — not yet implemented
-**Dependency:** None — Group 2 is independent of Groups 1 and 3. Can be done in any order.
+**Status:** IMPLEMENTED in Session 6 (`migrate_cleanup_ghosts.py`, `migrate_write_zones.py`, `fetch_upcoming.py` writes zone/bts on insert/update). Retained as audit trail.
+**Dependency:** None — Group 2 was independent of Groups 1 and 3.
 
 ---
 

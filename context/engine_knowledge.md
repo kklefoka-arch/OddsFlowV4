@@ -1,146 +1,164 @@
-# OddsFlow V4 — Engine Knowledge
+# OddsFlow V4 — Engine Knowledge (V3.1)
 
 > Living document. Updated at the end of each session.
-> Last updated: 2026-05-23
+> Last updated: 2026-05-28 (Session 19 — V3.1 doc-drift sweep)
 
 ---
 
 ## Engine Architecture
 
-OddsFlow V4 is a football betting analytics engine. It ingests pre-match fixtures and odds from the Sportmonks API, classifies each fixture into a (draw_zone × bts_pocket) cell, and emits picks only for the 10 cells promoted by a stone policy locked from 28,425 settled fixtures.
+OddsFlow V4 is a football betting analytics engine. It ingests pre-match fixtures and odds from the Sportmonks API, classifies each fixture into a `(draw_zone × DF × bts_pocket)` cell, and emits picks for the 20 cells in the active V3.1 policy.
 
 ### Process Flow
 
 ```
 [Sportmonks API]
       |
-      | fetch_upcoming.py (run daily)
+      | fetch_upcoming.py (daily 08:00 SAST) + refresh_odds.py (intraday 14:30)
       v
-[fixtures table]  ←── teams, leagues tables
+[fixtures table]  ←── teams, leagues
       |
       | classify_fixture()
       v
-[zone_of(draw_odd)]  +  [bts_of(btts_yes_odd, btts_no_odd)]
+[zone_of(draw_odd)] + [df_of(home, away)] + [bts_of(yes, no)]
       |
       v
-[PROMOTED_CELLS lookup] (static_policy.py)
+[V3_ACTIVE lookup] (static_policy.py — 20 cells)
       |
-      ├── cell not promoted → skip (partition_not_promoted)
-      ├── draw_odd missing  → skip (unclassifiable)
-      └── cell promoted     → emit pick
-                                   |
-                              [emit_log table]
-                                   |
-                    ┌──────────────┴──────────────┐
-                 [dnb]                       [alpha_win]
-              derive DNB odd               take min(home,away)
-              from 1X2 prices              as pick_odd
+      ├── cell not active → skip (partition_not_promoted)
+      ├── draw_odd missing → skip (unclassifiable)
+      └── cell active → one or two markets emit
+                         |
+                         ├ goals_nl (Over 1.5 Goals)  — strong + standard
+                         ├ corners_nl (Over 8.5 Corners) — standard only
+                         ├ dnb (alpha-or-draw)        — low
+                         └ alpha_win (favourite)      — one_sided
+                              |
+                         [emit_log table]
+                              |
+                  pick_uuid = sha256(fixture:market:pick)[:36]
+                  write_emit_log() supersedes stale unsettled rows
 ```
 
 ### Key Files
 
 | File | Role |
 |------|------|
-| `fetch_upcoming.py` | Daily fetch — Sportmonks API → fixtures + odds into DB |
-| `app/engine/classify.py` | `zone_of()` + `bts_of()` — two-axis fixture classification |
-| `app/engine/static_policy.py` | `PROMOTED_CELLS` — stone policy, 10 cells, never changes |
-| `app/api/routes_picks.py` | Pick generation + emit_log write + drift annotation |
-| `app/api/routes_upcoming.py` | All upcoming fixtures with classification labels |
-| `app/api/routes_analysis.py` | Per-cell hit rates from settled fixtures |
-| `app/api/routes_inspector.py` | Drift tracking per promoted cell |
-| `app/api/routes_reports.py` | Post-match performance + CSV export |
-| `app/api/routes_diagnostics.py` | Today summary + DB state + cron heartbeat |
+| `fetch_upcoming.py` | Daily fetch — fixtures + 1X2/BTTS/goals_over_*/corners_over_* odds + kickoff datetimes |
+| `emit_picks.py` | Calls `/picks?days=3` + writes `emit_picks` heartbeat |
+| `refresh_odds.py` | Intraday odds refresh for next-8h fixtures (M2) |
+| `refresh_stats.py` | 14-day corner-stats backfill (M3) |
+| `fetch_results.py` | Scores + `fixture_stats` after match windows |
+| `settle.py` | Writes `pick_results` (WIN/LOSS/VOID) |
+| `app/engine/classify.py` | `zone_of()` + `df_of()` + `bts_of()` |
+| `app/engine/static_policy.py` | `V3_ACTIVE` / `V3_MARKETS` / `PROMOTED_CELLS` — authoritative live policy (20 cells) |
+| `app/engine/promotion.py` | `compute_foundation()` — display matrix only (low cells `MEASURING`) |
+| `app/engine/foundation.py` | `load_foundation(conn)` — settled-fixture loader |
+| `app/engine/natural_lines.py` | natural / system line helpers |
+| `app/api/routes_picks.py` | `/picks` — V3.1 lookup + emit_log writer + drift |
+| `app/api/routes_upcoming.py` | All upcoming fixtures with classification |
+| `app/api/routes_foundation.py` | `/foundation` HTML + `/api/foundation` JSON (Analysis tab) |
+| `app/api/routes_inspector.py` | partition_drift, recent_settled, similar, daily_calendar |
+| `app/api/routes_reports.py` | emit_performance, emit_recent, emit_market_breakdown, settle_activity, paper_trading.csv |
+| `app/api/routes_results.py` | `/api/results` + `/api/livescores` (Results tab) |
+| `app/api/routes_diagnostics.py` | today_summary, db_state, odds_coverage, cron heartbeat (multi-metric V3.1), drift_report, activity_by_tier |
 | `app/db/database.py` | SQLite connection helper |
-| `app/settings.py` | Config (DB path, log level, env) |
-| `app/frontend/templates/engine_view.html` | SPA shell — 7 tabs |
-| `app/frontend/static/engine.js` | All tab logic, fetch calls, rendering |
+| `app/settings.py` | Config (DB path, env, log) |
+| `app/frontend/templates/engine_view.html` | SPA — 8 tabs |
+| `app/frontend/static/engine.js` | Tab logic, fetch calls, rendering |
 | `data/oddsflow_v4.db` | Live SQLite DB (not in git) |
-| `scripts/update_leagues.py` | One-off: upsert 30 subscribed leagues |
 
 ### Database Tables
 
 | Table | Purpose |
 |-------|---------|
-| `fixtures` | Pre-match + post-match fixture records with odds and scores |
-| `teams` | Team registry (name + Sportmonks ID) |
-| `leagues` | League registry (name, country, tier, Sportmonks ID) |
-| `emit_log` | Every pick the engine emitted — idempotent via `pick_uuid` |
-| `pick_results` | Post-match settlement of emitted picks (WIN/VOID/LOSS) |
-| `system_health` | Cron heartbeat and error logs |
-| `fixture_stats` | Extended match stats (goals, corners — from calibration DB) |
-| `h2h_meetings` | Head-to-head historical meetings |
+| `fixtures` | Fixture + odds + scores + `draw_zone`, `bts_pocket` (stored from Session 6) |
+| `teams` | Team registry |
+| `leagues` | League registry + tier |
+| `emit_log` | Every pick emitted — idempotent via `pick_uuid` |
+| `pick_results` | Settled pick outcomes |
+| `system_health` | Heartbeats — `fetch_upcoming`, `fetch_results`, `settle`, `emit_picks`, `refresh_odds`, `refresh_stats`, plus legacy `cron_heartbeat` |
+| `fixture_stats` | Corners + match stats |
+| `h2h_meetings` | Head-to-head history (~58k rows, reserved for Project 3) |
 
 ---
 
-## Classification System
+## Classification (three axes)
 
-### Draw Zone (axis 1 — `zone_of`)
+### Draw Zone (`zone_of(draw_odd)`)
 
-Derived from the bookmaker draw odd:
-
-| Zone | Draw odd range | Market |
-|------|---------------|--------|
-| `strong` | 2.70 ≤ odd < 3.40 | DNB |
-| `standard` | 3.40 ≤ odd < 4.10 | DNB |
-| `low` | 4.10 ≤ odd < 4.80 | MEASURING (suppressed) |
-| `one_sided` | odd ≥ 4.80 | Alpha Win |
+| Zone | Draw odd range | Market routed |
+|------|----------------|---------------|
+| `strong` | 2.70 ≤ odd < 3.40 | goals_nl |
+| `standard` | 3.40 ≤ odd < 4.10 | goals_nl + corners_nl |
+| `low` | 4.10 ≤ odd < 4.80 | dnb (ACTIVE — `LOW_ZONE_SUPPRESS = False`) |
+| `one_sided` | odd ≥ 4.80 | alpha_win |
 | *(excluded)* | odd < 2.70 | Not classified |
 
-### BTS Pocket (axis 2 — `bts_of`)
+### DF (`df_of(home_odd, away_odd)`) — V3.1 axis
 
-Derived from BTTS Yes and No odds:
+| DF | Condition |
+|----|-----------|
+| `DF0` | rounded diff < 0.5 |
+| `DF1` | 0.5 ≤ rounded diff < 1.5 |
+| `DF2` | rounded diff ≥ 1.5 |
+
+### BTS Pocket (`bts_of(yes, no)`)
 
 | Pocket | Condition |
 |--------|-----------|
-| `strong_over` | Yes favoured AND yes_odd < 1.50 |
-| `slight_over` | Yes favoured AND yes_odd ≥ 1.50 |
-| `strong_under` | No favoured AND no_odd < 1.50 |
-| `slight_under` | No favoured AND no_odd ≥ 1.50 |
-
-"Yes favoured" = yes_odd ≤ no_odd.
+| `strong_over` | Yes favoured AND `yes_odd < 1.50` |
+| `slight_over` | Yes favoured AND `yes_odd ≥ 1.50` |
+| `strong_under` | No favoured AND `no_odd < 1.50` |
+| `slight_under` | No favoured AND `no_odd ≥ 1.50` |
 
 ### Partition Key
-
-Written as `zone:bts_pocket` — e.g., `standard:slight_over`. This is the cell identity used throughout the SPA.
+`zone:DF:bts_pocket`, e.g. `standard:DF1:slight_over`. Used as the cell identity across the SPA and inspector.
 
 ---
 
-## Stone Policy — 10 Promoted Cells
+## V3.1 Active Cells (20)
 
-Locked from 28,425 settled fixtures. Never changes with local DB state.
+Source: `app/engine/static_policy.py::V3_ACTIVE`. Locked from 28,425-fixture analysis + 2026-05-27 DF separation evidence.
 
-| Cell (zone:bts) | Market | Hist hit % | n fixtures | Promote status |
-|----------------|--------|-----------|-----------|----------------|
-| strong:slight_over | DNB | 70.5% | 4,997 | PROMOTE_TOLERANCE |
-| strong:slight_under | DNB | 74.9% | 5,925 | PROMOTE |
-| strong:strong_under | DNB | 87.9% | 33 | PROMOTE |
-| standard:slight_over | DNB | 74.8% | 9,449 | PROMOTE |
-| standard:strong_over | DNB | 69.4% | 1,319 | PROMOTE_TOLERANCE |
-| standard:slight_under | DNB | 82.8% | 1,940 | PROMOTE |
-| standard:strong_under | DNB | 84.6% | 26 | PROMOTE |
-| one_sided:slight_over | Alpha Win | 76.6% | 1,119 | PROMOTE |
-| one_sided:slight_under | Alpha Win | 81.0% | 814 | PROMOTE |
-| one_sided:strong_under | Alpha Win | 80.9% | 47 | PROMOTE |
-
-**PROMOTE_TOLERANCE** = cell promoted despite borderline statistical confidence.
-3-Way baseline avg across all 10 promoted cells: 74.6%.
+| Cell | Markets | Historical hit |
+|------|---------|----------------|
+| strong:DF0:slight_over | goals_nl | 70.9% (n=704) |
+| strong:DF0:slight_under | goals_nl | 65.2% (n=851) |
+| strong:DF1:slight_over | goals_nl | 72.6% (n=3712) |
+| strong:DF1:slight_under | goals_nl | 66.7% (n=2525) |
+| strong:DF2:slight_over | goals_nl | 71.4% (n=581) |
+| strong:DF2:slight_under | goals_nl | 67.1% (n=2549) |
+| standard:DF0:slight_over | goals_nl + corners_nl | 80.1 / 61.9 |
+| standard:DF0:strong_over | goals_nl + corners_nl | 81.1 / 61.3 |
+| standard:DF1:slight_over | goals_nl + corners_nl | 79.7 / 65.4 |
+| standard:DF1:strong_over | goals_nl + corners_nl | 83.5 / 69.7 |
+| standard:DF2:slight_over | goals_nl + corners_nl | 76.9 / 63.9 |
+| standard:DF2:slight_under | goals_nl + corners_nl | 71.6 / 57.9 |
+| standard:DF2:strong_over | goals_nl + corners_nl | 86.2 / 74.6 |
+| low:DF2:slight_over | dnb | 84.9% |
+| low:DF2:slight_under | dnb | 91.6% |
+| low:DF2:strong_over | dnb | 82.8% |
+| one_sided:DF2:slight_over | alpha_win | 76.6% |
+| one_sided:DF2:slight_under | alpha_win | 81.0% |
+| one_sided:DF2:strong_over | alpha_win | 66.7% (FLAG) |
+| one_sided:DF2:strong_under | alpha_win | 80.9% (n=47, `min_n` lowered 50→45) |
 
 ---
 
 ## Markets
 
-| Market | Full name | When used | Pick = |
-|--------|-----------|-----------|--------|
-| `dnb` | Draw No Bet | strong and standard draw zones | Favourite (alpha team) — DNB returns stake if draw |
-| `alpha_win` | Alpha Win | one_sided draw zone | Favourite must win outright — no draw protection |
+| Market | Full name | When fired | Pick label | Pick odd source |
+|--------|-----------|------------|-----------|-----------------|
+| `goals_nl` | Over 1.5 Goals | strong + standard | `"Over 1.5 Goals"` | `fixtures.goals_over_15_odd` (often NULL) |
+| `corners_nl` | Over 8.5 Corners | standard | `"Over 8.5 Corners"` | `fixtures.corners_over_85_odd` (almost always NULL) |
+| `dnb` | Draw No Bet | low (V3.1 activated) | Alpha team name | Derived `(1 − p_draw) / p_alpha` |
+| `alpha_win` | Alpha Win | one_sided | Alpha team name | `min(home_odd, away_odd)` |
 
-### Alpha Team
-
-The team with the lower (more favoured) 1X2 odd. If home_odd ≤ away_odd → alpha is home, else away.
+### Why pick_odd is often NULL on goals_nl / corners_nl
+Sportmonks rarely quotes Over 1.5 Goals or Over 8.5 Corners (trivial lines). V3.1 policy is **natural-line only** — no fallback to Over 2.5 / Over 9.5 prices. The SPA renders `—` via `fmt.odd` when NULL. EV will come from Project 3 (breakeven_odds + live bookmaker price), not from `pick_odd`.
 
 ### DNB Derived Odd
-
-For DNB, bookmakers don't always quote a direct DNB price. The engine derives it from the 1X2 prices:
 
 ```
 p_home = 1 / home_odd
@@ -150,268 +168,163 @@ p_alpha = max(p_home, p_away)
 dnb_odd = (1 - p_draw) / p_alpha
 ```
 
-When derived: the pick card shows a `derived` flag — this is not a quoted bookmaker price.
+Pick card shows a `derived` flag.
 
 ---
 
 ## Pick Settlement
 
-| Outcome | Condition |
-|---------|-----------|
-| WIN (1.0) | Alpha team wins |
-| VOID (0.5) | Draw (DNB only) — stake returned |
-| LOSS (0.0) | Alpha team loses |
+| Outcome | `actual_value` | Markets it applies to |
+|---------|---------------|----------------------|
+| WIN | 1.0 | All markets |
+| VOID | 0.5 | DNB only |
+| LOSS | 0.0 | All markets |
 
-Alpha Win does not void on draw — a draw is a LOSS for Alpha Win.
+**Hit rate convention:** V3 non-loss — `(wins + voids) / settled`. Voids count as wins because stake is returned.
+
+`pick_results.outcome` is the **string** label. `pick_results.actual_value` is the **float**. Filter on `outcome='WIN'` or use `actual_value` for arithmetic; mixing storage classes in SQLite returns garbage.
 
 ---
 
 ## Drift
 
-The engine tracks whether each promoted cell is performing recently vs its historical baseline.
-
 | Flag | Condition |
 |------|-----------|
-| `stable` | Recent hit rate within 5pp of historical |
-| `watch` | Recent hit rate 5–10pp below historical |
-| `drifting` | Recent hit rate >10pp below historical |
-| `no_data` | Fewer than 10 settled emits in the window |
+| `stable` | gap > −5pp |
+| `watch` | −10pp < gap ≤ −5pp |
+| `drifting` | gap ≤ −10pp |
+| `no_data` | recent_n < 10 |
 
-**Display only** — drift flags are informational. The engine does NOT auto-suppress drifting cells.
-
----
-
-## League Tiers
-
-30 subscribed leagues in 3 tiers:
-
-| Tier | Description | Leagues |
-|------|-------------|---------|
-| T1 | Top-flight | PL, Ligue 1, La Liga, Serie A, Allsvenskan, Eliteserien, Besta deild, Veikkausliiga, Ireland Premier Division, MLS, Brazil Serie A, J1, K League 1 |
-| T2 | Second-tier / strong regional | La Liga 2, Superettan, Ettan North/South, Copa Colombia, Primera B, Liga Pro Ecuador, Canada PL, Ykköseliga, Meistriliiga, Esiliiga A, USL Championship, J2/J3, China Super League |
-| T3 | Development / lower | USL League One, MLS Next Pro, Bolivia Liga |
-
----
-
-## Abbreviations Reference
-
-| Abbreviation | Full form |
-|-------------|-----------|
-| DNB | Draw No Bet |
-| BTS / BTTS | Both Teams Score |
-| pp | Percentage points (e.g. gap_pp = difference in hit rate) |
-| SM | Sportmonks (the API provider) |
-| T1 / T2 / T3 | Tier 1 / Tier 2 / Tier 3 |
-| FK | Foreign key (DB join field) |
-| emit | Engine generating and logging a pick (emit_log entry) |
-| leg | A single market pick within a fixture emission |
-| event | A (fixture, market) pair — collapses multi-leg picks per fixture |
-| PRX9 | Retired system (V3 ranking layer, not present in V4) |
-| 1X2 | Standard three-way market: Home Win / Draw / Away Win |
-| alpha team | The favoured side (lower odd) in a fixture |
-| promote / PROMOTE | Cell cleared by the stone policy to emit picks |
-| PROMOTE_TOLERANCE | Promoted despite borderline statistical confidence |
-| MEASURING | Low zone — data collection only, no picks emitted |
-| cron | Scheduled daily automation (currently manual — run fetch_upcoming.py daily) |
-| emit_log | Table logging every pick the engine has emitted |
-| pick_results | Table logging settlement outcome (WIN/VOID/LOSS) after match |
-| partition | A (zone, bts_pocket) cell — one row in the classification matrix |
-| paper trading | Tracking picks without real money — CSV export for manual tracking |
-| chain | (Legacy V3 term) Audit trail — not used in V4 |
+Drift is informational — engine never auto-suppresses a cell. Per (zone, df, bts, market) baseline used.
 
 ---
 
 ## SPA Tabs — What Each Shows
 
 ### Tab 1: Picks
-
-**API:** `GET /picks?days={n}` + `GET /picks/prx9?days={n}`
-**Default window:** 3 days
-**Purpose:** All upcoming fixtures in promoted cells — the engine's active output.
-
-Each card shows:
-- Fixture (home vs away), league, country, tier badge
-- Kickoff date and time (local, converted from UTC)
-- Partition key (e.g. `standard:slight_over`)
-- Draw zone label
-- ★ PROMOTE chip — historical hit rate + n fixtures
-- Drift chip (only shown if `watch` or `drifting` — hidden when `stable` or `no_data`)
-- Market row(s): market name, pick (alpha team name), odd, `derived` flag if DNB odd was calculated
-
-**Summary bar:** fixtures emitted, picks emitted, window, DNB count, Alpha Win count, unclassifiable skips, not-promoted skips.
-
-**CSV download:** exports current window as paper_trading.csv with operator columns pre-populated blank (sportybet_price, hollywoodbet_price, gbets_price, decision, outcome, notes).
-
-**PRX9 panel:** Retired — always empty.
-
-**Click behaviour:** Clicking a pick card opens the Inspector tab and populates it with that fixture's details.
-
----
+`GET /picks?days={n}` (default 7d). Each pick card: fixture, kickoff, partition key, market row(s), pick label, pick_odd (or `—`), drift chip.
+Summary bar: count, fixtures, by market, skip reasons. CSV export → `paper_trading.csv`.
 
 ### Tab 2: Upcoming
-
-**API:** `GET /upcoming?days={n}&tier={t}`
-**Default window:** 7 days
-**Purpose:** All upcoming fixtures with their classification — before the promotion filter. Lets operator see what the engine sees.
-
-Each card shows:
-- Fixture, league, tier, kickoff
-- 1X2 odds (home/draw/away)
-- BTS Yes / No odds
-- ★ PROMOTE chip (green) if the cell is in the stone policy, absent otherwise
-- Zone group chip (e.g. `standard`)
-- BTS v2 chip (e.g. `slight_over`)
-
-**Summary bar:** total fixtures, by tier, promoted count.
-**Tier filter:** All / T1 / T2 / T3 dropdown.
-
----
+`GET /upcoming?days={n}&tier={t}` (default 7d). Every classified fixture with V3.1 cell chip.
 
 ### Tab 3: Analysis
-
-**API:** `GET /analysis/calibration_partition?min_n={n}` (all tiers) or `GET /analysis/partition_stats_by_tier?min_n={n}` (tier selected)
-**Purpose:** Foundation matrix — per-cell hit rates computed live from all settled fixtures in the DB. ★ PROMOTE marks stone policy cells.
-
-Table columns:
-- **Zone** — draw zone
-- **BTS v2** — BTS pocket
-- **n** — settled fixture count in this cell (with complete odds)
-- **Hit %** — threeway hit rate (DNB win-or-void / Alpha Win win rate)
-- **Avg odd** — average favourite odd in this cell
-- **Edge** — hit_rate − 1/avg_odd (positive = profitable edge)
-- **Dominant** — pick direction (DNB or Alpha Win)
-- **Concentr.** — same as hit % (directional concentration)
-- **Tag** — ★ Promote or —
-
-**Note:** If local DB has <min_n settled fixtures with complete odds for a cell, that cell is absent from the table. The `strong:strong_under` cell (stone policy n=33) may appear missing at min_n=30 if local DB has sparse coverage.
-
----
+`GET /api/foundation`. Foundation matrix — live `compute_foundation()` output. ALL / T1 / T2+T3 sub-tabs.
 
 ### Tab 4: Inspector
-
-**API:** `GET /inspector/partition_drift?recent_days={n}`
-**Purpose:** Real-time drift monitoring for all 10 promoted cells. Compare recent live performance vs historical stone policy baseline.
-
-Drift table columns:
-- **Zone / BTS** — cell identity
-- **Historical n** — fixture count in stone policy dataset
-- **Hist hit %** — stone policy hit rate
-- **Recent n** — settled emits in the drift window
-- **Recent hit %** — live hit rate from emit_log
-- **Gap pp** — recent − historical (negative = underperforming)
-- **Flag** — stable / watch / drifting / no_data
-
-**Click from Picks → Inspector:** Clicking a pick card in the Picks tab also opens the Inspector and shows that fixture's detail card (league, teams, partition key, market/pick/odd).
-
-**Drift window options:** 7d / 14d / 30d (default) / 90d.
-
----
+- `GET /inspector/partition_drift` — drift table per active cell
+- `GET /inspector/recent_settled` — recent fixtures with settled picks
+- `GET /inspector/similar?fixture_id=…` — cell history for pre-match lens
+- `GET /inspector/daily_calendar` — WIN/VOID/LOSS calendar
 
 ### Tab 5: Reports
-
-**APIs (4 sub-sections):**
-- `GET /reports/settle_activity?days={n}` — settlement activity from `pick_results`
-- `GET /reports/emit_performance` — multi-window hit rates from `emit_log` on-the-fly
-- `GET /reports/emit_market_breakdown?days={n}` — per-cell hit rates by market
-- `GET /reports/emit_recent?days={n}` — per-fixture readback with WIN/VOID/LOSS/PENDING
-
-**Purpose:** Post-match self-evaluation of all emitted picks.
-
-**Settlement activity:** Counts from `pick_results` table. Empty until picks are manually settled. Shows last cron clean run timestamp.
-
-**Multi-window performance:** Computed on-the-fly from `emit_log` joined to `fixtures` scores. Shows performance across 1d / 3d / 7d / 30d / 90d / 180d windows with two views:
-- **Legs** — each emit_log row counted separately
-- **Events** — (fixture, market) pairs collapsed into one event
-
-**Per-market hit rates:** Settled emits grouped by (zone, bts, market, pick). Requires settled fixtures to have results.
-
-**Recent fixtures readback:** Shows each emitted fixture with WIN/VOID/LOSS/PENDING per leg. PENDING = fixture not yet played or score not yet in DB.
-
----
+- `/reports/emit_performance` — multi-window hit rates (legs + events)
+- `/reports/emit_recent` — per-fixture readback
+- `/reports/emit_market_breakdown` — per (zone, df, bts, market, pick) hit rates
+- `/reports/settle_activity` — daily settlement counts + last pipeline heartbeat
 
 ### Tab 6: Today
-
-**API:** `GET /diagnostics/today_summary`
-**Purpose:** Operator dashboard — single-page health snapshot.
-
-Shows:
-- **Cron chip:** fresh (< 26h) / warning (26–48h) / stale (>48h) / never_fired. Cron = the scheduled daily automation that runs fetch + emit. Currently manual.
-- **Last clean run chip:** timestamp of last full cron cycle completion
-- **Chain chip:** V3 legacy audit chain status — always "unknown" in V4
-- **Drift chip:** aggregate drift state across all promoted cells (stable / watch count / drifting count / no_data)
-- **Summary metrics:** fixtures kicking off today, fixtures fetched last 24h, picks emitted today, locks pending (always 0 in V4), settled today
-- **Engine hit rate blocks:** 7d and 30d event hit rates
-- **DB state:** fixtures settled / total, emits settled / total
-- **By market today:** DNB count, Alpha Win count for today's emits
-
----
+`GET /diagnostics/today_summary`. Cron chip uses **any pipeline metric** in `system_health` (V3.1 — `fetch_upcoming` / `fetch_results` / `settle` / `emit_picks` / `refresh_odds` / `refresh_stats` / legacy `cron_heartbeat`). Fresh < 26h, warning 26–48h, stale > 48h, never_fired if none seen.
 
 ### Tab 7: Stats
+`/diagnostics/db_state` + `/odds_coverage` + `/cron/heartbeat` + `/drift_report` + `/activity_by_tier`.
 
-**APIs:** `GET /diagnostics/db_state` + `GET /diagnostics/odds_coverage` + `GET /diagnostics/cron/heartbeat` + `GET /diagnostics/drift_report` + `GET /diagnostics/activity_by_tier?days=7`
-**Purpose:** Technical dashboard — DB health, odds data quality, per-tier activity, drift stability table.
-
-Shows:
-- **DB counts:** raw row counts for all core tables
-- **Cron heartbeat:** last recorded timestamp and stale flag
-- **Activity by tier (7d):** emit count by T1 / T2 / T3
-- **Odds coverage per league:** % of fixtures with goal odds / BTS odds / corner odds available
-- **Drift report:** partition stability table — OK / warning / critical per promoted cell
+### Tab 8: Results
+`GET /api/results?days={n}` + `GET /api/livescores`. Recent settled fixture history + Sportmonks live-in-play overlay (server-side proxy, ACTIVE_LEAGUES filter, 60s polling when match window open).
 
 ---
 
-## Current System State (2026-05-23)
+## League Tiers
+
+| Tier | Description | Leagues |
+|------|-------------|---------|
+| T1 | Top-flight | PL, Ligue 1, La Liga, Serie A, Allsvenskan, Eliteserien, Besta deild, Veikkausliiga, Ireland Premier Division, MLS, Brazil Serie A, J1, K League 1 |
+| T2 | Second-tier / strong regional | La Liga 2, Superettan, Ettan N/S, Copa Colombia, Primera B, Liga Pro Ecuador, Canada PL, Ykköseliga, Meistriliiga, Esiliiga A, USL Championship, J2/J3, China Super League |
+| T3 | Development / lower | USL League One, MLS Next Pro, Bolivia Liga |
+
+30 subscribed leagues in DB; ~62 total including historical seeds.
+
+---
+
+## Abbreviations Reference
+
+| Abbrev | Full form |
+|--------|-----------|
+| DNB | Draw No Bet |
+| BTS / BTTS | Both Teams To Score |
+| DF | Difference Factor — V3.1 partition axis (rounded `|home_odd − away_odd|`) |
+| NL / SL | Natural line / System line |
+| pp | Percentage points |
+| SM | Sportmonks |
+| T1 / T2 / T3 | League tier |
+| FK | Foreign key |
+| emit | Engine generating + logging a pick |
+| leg | A single market pick within a fixture emission |
+| event | A (fixture, market) pair — collapses multi-leg picks |
+| 1X2 | Home Win / Draw / Away Win market |
+| alpha team | Favoured side (lower odd) |
+| PROMOTE | Cell in V3_ACTIVE that emits picks |
+| MEASURING | Foundation matrix tag for low-zone cells (display only — picks still fire) |
+| cron | Scheduler — 12 Task Scheduler jobs |
+| emit_log | Pick emission table |
+| pick_results | Settlement table |
+| partition | A (zone, DF, bts) cell |
+| paper trading | CSV export for manual bookmaker tracking |
+| chain | Legacy V3 audit-trail concept — not used in V4 |
+| PRX9 | Retired V3 ranking layer — removed in V3.1 |
+
+---
+
+## Current System State (2026-05-28)
 
 | Metric | Value |
 |--------|-------|
-| DB fixtures total | 32,993 |
-| DB fixtures settled | 28,602 |
-| DB fixtures upcoming | 4,391 |
-| emit_log total | 198 |
-| emit settled | 0 (picks all PENDING — upcoming only) |
-| pick_results | 0 (no manual settlement yet) |
-| Leagues in DB | 57 (30 subscribed + 27 historical) |
-| Picks (3d window) | 170 (157 DNB, 13 Alpha Win) |
-| Upcoming (7d window) | 391 (184 promoted) |
+| Active policy | V3.1 (20 cells, DF-aware) |
+| DB fixtures total | 51,057 |
+| DB fixtures settled | 46,905 |
+| DB fixtures upcoming | 4,152 |
+| fixture_stats | 38,574 |
+| emit_log total | 613 — 275 settled, 338 pending |
+| pick_results | 275 — 156W / 76L / 43V (non-loss 73.5% 7d) |
+| Leagues in DB | 62 (30 subscribed + historical) |
+| h2h_meetings | 58,881 |
 | ngrok URL | https://steadier-legwarmer-finlike.ngrok-free.dev |
 | Port | 8083 |
 
 ---
 
-## Known Issues / Fixes Applied This Session
-
-| # | Issue | Status |
-|---|-------|--------|
-| 1 | 18 subscribed leagues missing from leagues table | Fixed — `update_leagues.py` run (0 inserted, 30 updated) |
-| 2 | `fetch_upcoming.py` stored Sportmonks league ID instead of internal DB ID → 1,984 upcoming fixtures untiered in all SPA views | Fixed — DB migrated via SQL UPDATE, script patched to resolve internal ID via `_league_id_map` |
-| 3 | July–Aug and Sep–Oct fetch windows hit 20-page cap (1,000 fixtures each) — fixtures beyond cap not fetched | Open — consider sub-window approach or higher cap for dense seasons |
-| 4 | Cron never_fired — no scheduled job running | Open — `fetch_upcoming.py` run manually daily |
-| 5 | pick_results = 0 — no post-match settlement yet | Expected — Reports performance metrics will populate once upcoming fixtures complete |
-
----
-
 ## How to Operate
 
-### Daily fetch (required)
+### Daily — run scheduler or chained script
+The scheduler handles this automatically (12 jobs registered via `setup_scheduler.ps1`). Manual fallback:
+
 ```powershell
 Set-Location C:\OddsFlowV4
+.\run_daily.ps1   # chains fetch_upcoming → emit_picks → fetch_results → settle + heartbeat
+```
+
+Or each step individually:
+```powershell
 python fetch_upcoming.py
+python emit_picks.py
+python fetch_results.py
+python settle.py
 ```
 
-### Start server
+### Server
+Runs from Task Scheduler (`OddsFlow_Server`, auto-restart). Manual start:
 ```powershell
-Set-Location C:\OddsFlowV4
-uvicorn app.main:app --host 0.0.0.0 --port 8083 --reload
+uvicorn app.main:app --host 0.0.0.0 --port 8083
 ```
 
-### Start ngrok (if tunnel needed)
+### Ngrok
+Runs from Task Scheduler (`OddsFlow_Ngrok`). Manual:
 ```powershell
 ngrok http 8083
 ```
-Fixed URL: `https://steadier-legwarmer-finlike.ngrok-free.dev`
 
-### Access points
+### Access
 - Local SPA: http://localhost:8083
-- API docs: http://localhost:8083/docs
-- Health: http://localhost:8083/healthz/deep
-- Ngrok (public): https://steadier-legwarmer-finlike.ngrok-free.dev
+- Public: https://steadier-legwarmer-finlike.ngrok-free.dev
+- Health: /health and /healthz/deep
+- API docs: /docs

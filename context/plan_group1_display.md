@@ -2,7 +2,7 @@
 ## Gaps: G4 (Similar-Odds Inspector), G7 (Results Display)
 
 **Phase connection:** Phase 8 (Score Update) → Phase 10 (Reports) → Phase 12 (Validate/Drift)
-**Status:** PLANNED — not yet implemented
+**Status:** IMPLEMENTED in Session 6 (Results tab + livescores + auto-settle hook + Inspector similar endpoint). This file is retained as an audit trail. Do not re-plan from it.
 
 ---
 

@@ -1,80 +1,104 @@
 # OddsFlow V4 — Architecture & File Map
 
 ## Process flow
+
 ```
 Sportmonks API (v3/football/fixtures/between/{start}/{end})
-  └─ fetch_upcoming.py  ← run daily
-       └─ fixtures table (draw_odd, home_odd, away_odd, btts_yes/no_odd)
+  └─ fetch_upcoming.py  (daily 08:00 SAST)         [+ refresh_odds.py @ 14:30 SAST]
+       └─ fixtures table (1X2, BTTS, goals_over_*_odd, corners_over_*_odd, kickoff_utc)
             └─ classify_fixture()  [app/engine/classify.py]
-                 ├─ zone_of(draw_odd)      → draw_zone [strong|standard|low|one_sided|NULL]
-                 └─ bts_of(yes, no)        → bts_pocket [strong_over|slight_over|strong_under|slight_under|NULL]
-                      └─ PROMOTED_CELLS lookup  [app/engine/static_policy.py]
-                           └─ pick emitted (DNB or Alpha Win)
-                                └─ emit_log  INSERT OR IGNORE on pick_uuid  (idempotent)
-                                     └─ pick_result when match settles  (/api/fixtures/settle/{id})
+                 ├─ zone_of(draw_odd)       → strong | standard | low | one_sided | NULL
+                 ├─ df_of(home, away)       → DF0 | DF1 | DF2
+                 └─ bts_of(yes, no)         → strong_over | slight_over | slight_under | strong_under | NULL
+                      └─ V3_ACTIVE lookup  [app/engine/static_policy.py]
+                           └─ per-market pick(s): goals_nl | corners_nl | dnb | alpha_win
+                                └─ emit_log  (INSERT OR IGNORE on pick_uuid; supersede stale)
+
+Sportmonks API (results)
+  └─ fetch_results.py  (after match windows close — 23:30, 03:00, 06:00 SAST)
+       ├─ fixtures.home_score / away_score / total_goals
+       └─ fixture_stats.home_corners / away_corners / total_corners
+            └─ settle.py  (23:45 / 03:15 / 06:15 SAST)
+                 └─ pick_results  (outcome, actual_value)
+                      └─ Inspector + Reports tabs surface settled performance
 ```
 
 ## File map — `C:\OddsFlowV4`
+
 ```
 app/
 ├── main.py                    FastAPI entry — SPA at /, registers all routers
 ├── settings.py                DATABASE_URL (→ data/oddsflow_v4.db), APP_ENV, LOG_LEVEL
 ├── api/
-│   ├── routes_health.py       GET /health
-│   ├── routes_fixtures.py     GET /fixtures (HTML) + /api/fixtures (JSON) + settle
-│   ├── routes_foundation.py   GET /foundation — Foundation Matrix page
-│   ├── routes_ingest.py       POST /ingest/* — Sportmonks ingest
-│   ├── routes_picks.py        GET /picks — stone policy picks + emit_log write
-│   ├── routes_upcoming.py     GET /upcoming — fixtures with PROMOTE chips
-│   ├── routes_analysis.py     GET /analysis/* — calibration from settled fixtures
-│   ├── routes_reports.py      GET /reports/* — emit performance windows
-│   ├── routes_inspector.py    GET /inspector/* — partition drift vs stone policy
-│   └── routes_diagnostics.py  GET /diagnostics/* + /healthz/deep
+│   ├── routes_health.py         GET /health
+│   ├── routes_fixtures.py       /fixtures HTML + /api/fixtures JSON + settle helpers
+│   ├── routes_foundation.py     GET /foundation (HTML) + /api/foundation (matrix JSON)
+│   ├── routes_ingest.py         POST /ingest/* — Sportmonks ingest helpers
+│   ├── routes_picks.py          GET /picks — V3.1 policy lookup + emit_log write + drift
+│   ├── routes_upcoming.py       GET /upcoming — fixtures with V3.1 cell chips
+│   ├── routes_reports.py        /reports/* — emit performance, recent, settle activity, market breakdown
+│   ├── routes_inspector.py      /inspector/* — partition_drift, recent_settled, similar, daily_calendar
+│   ├── routes_diagnostics.py    /diagnostics/* + multi-metric cron heartbeat
+│   └── routes_results.py        /api/results + /api/livescores (livescores polling)
 ├── engine/
-│   ├── classify.py            zone_of(), bts_of(), classify_fixture()
-│   ├── static_policy.py       PROMOTED_CELLS — 10 cells, stone policy (locked)
-│   ├── promotion.py           compute_foundation() — hit rates + promotion logic
-│   └── foundation.py          Foundation Matrix builder
+│   ├── classify.py              zone_of(), bts_of(), df_of(), classify_fixture()
+│   ├── static_policy.py         V3_ACTIVE / V3_MARKETS / PROMOTED_CELLS — authoritative live policy
+│   ├── promotion.py             compute_foundation() — display matrix only (low cells = MEASURING)
+│   ├── foundation.py            load_foundation(conn) — settled-fixture loader
+│   └── natural_lines.py         natural_line(zone, market), system_line(zone, market)
 ├── db/
-│   ├── database.py            init_db() + migrations + get_conn()
-│   └── schema.sql             Full schema (leagues, teams, fixtures, emit_log, pick_results)
+│   ├── database.py              init_db() + get_conn()
+│   └── schema.sql               Full schema
 └── frontend/
-    ├── templates/engine_view.html  V4 SPA (7 tabs)
+    ├── templates/engine_view.html  V4 SPA (8 tabs incl. Results)
     └── static/
-        ├── engine.js          SPA JavaScript
-        └── engine.css         SPA stylesheet
+        ├── engine.js
+        └── engine.css
 
 data/
-├── oddsflow_v4.db             Live SQLite DB (not in git)
-└── v1_calibration_readonly.db Historical 28k fixtures — engine report reference (not in git)
+├── oddsflow_v4.db                 Live SQLite DB (not in git)
+└── v1_calibration_readonly.db     Historical 28k fixtures (not in git)
 
-fetch_upcoming.py              Fetch all 30 leagues from Sportmonks — run daily
+fetch_upcoming.py                  Daily fetch — odds + kickoff datetimes
+emit_picks.py                      Calls /picks?days=3 + heartbeat
+refresh_odds.py                    Intraday odds refresh for next-8h fixtures (M2)
+refresh_stats.py                   Corner-stats backfill (14d lookback, M3)
+fetch_results.py                   Scores + corner stats post-match
+settle.py                          pick_results writer
+run_daily.ps1                      Operator chained pipeline
+setup_scheduler.ps1                Registers 12 Task Scheduler jobs
 scripts/
-├── v3_full_report.py          Engine testing report (Phases 2-7) vs calibration DB
-├── update_leagues.py          Upsert 30 leagues into leagues table (run to fix blank names)
-└── seed_from_calibration.py   One-time seed of V4 DB from calibration DB
-archive/                       Zipped retired projects (OddsFlow2, KK_way, original, relaunch)
-context/                       Session reference docs (this folder)
-CLAUDE.md                      Session entry point — read first, update on close
+├── update_leagues.py              Upsert 30 leagues
+├── seed_from_calibration.py       One-time seed from calibration DB
+├── league_migration_analysis.py   Writes Excel/JSON to "OddsFlow AI Website/Output"
+└── v3_full_report.py              Engine testing report
+archive/                           Zipped retired projects
+context/                           This folder
+CLAUDE.md                          Session entry point
 ```
 
 ## SPA tabs → API endpoints
-| Tab | Endpoint |
-|-----|----------|
-| Picks | GET /picks?days=N |
-| Today | GET /diagnostics/today_summary |
-| Upcoming | GET /upcoming?days=N |
-| Analysis | GET /analysis/calibration_partition |
-| Inspector | GET /inspector/partition_drift |
-| Reports | GET /reports/settle_activity |
-| Stats | GET /diagnostics/db_state + /odds_coverage |
+
+| Tab | Endpoint(s) |
+|-----|-------------|
+| Picks | `GET /picks?days=N` |
+| Today | `GET /diagnostics/today_summary` |
+| Upcoming | `GET /upcoming?days=N&tier=T` |
+| Analysis | `GET /api/foundation` |
+| Inspector | `GET /inspector/partition_drift` + `/recent_settled` + `/similar` + `/daily_calendar` |
+| Reports | `GET /reports/settle_activity` + `/emit_performance` + `/emit_recent` + `/emit_market_breakdown` |
+| Stats | `GET /diagnostics/db_state` + `/odds_coverage` + `/cron/heartbeat` + `/drift_report` + `/activity_by_tier` |
+| Results | `GET /api/results` + `/api/livescores` |
 
 ## DB tables
+
 | Table | Contents |
 |-------|----------|
-| `leagues` | 30 subscribed leagues with sportmonks_id and tier |
+| `leagues` | Subscribed + historical leagues with `sportmonks_id` and `tier` |
 | `teams` | Teams auto-added during fixture fetch |
-| `fixtures` | All fixtures — upcoming (home_score IS NULL) and settled |
-| `fixture_stats` | Corner/tackle/card stats for settled fixtures |
-| `emit_log` | Every pick emitted — UUID, market, pick, odd, zone, bts_pocket |
-| `pick_results` | Settlement outcomes (WIN/LOSS/VOID) |
+| `fixtures` | All fixtures — upcoming and settled. Odds: `home_odd`, `draw_odd`, `away_odd`, `btts_yes_odd`, `btts_no_odd`, `goals_over_15/25/35_odd`, `corners_over_75/85/95_odd` |
+| `fixture_stats` | Corner stats + other per-match stats for settled fixtures |
+| `emit_log` | Every pick emitted — `pick_uuid`, market, pick label, pick_odd, zone/bts/(df via cell key) |
+| `pick_results` | Settlement outcomes (WIN/VOID/LOSS string + 1.0/0.5/0.0 float) |
+| `system_health` | Per-task heartbeats (`fetch_upcoming`, `fetch_results`, `settle`, `emit_picks`, `refresh_odds`, `refresh_stats`, plus legacy `cron_heartbeat`) |
+| `h2h_meetings` | Head-to-head meeting history (~58k rows) |
