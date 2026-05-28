@@ -1,4 +1,4 @@
-# OddsFlow V4
+# OddsFlow V4 — V3 Engine (Session 19 restore)
 
 **This is the only OddsFlow project.** One folder, one repo, one DB.
 Read this file at the start of every session. Update it at the end. Commit it.
@@ -10,133 +10,119 @@ Host (local): `http://localhost:8083` | Host (ngrok): `https://steadier-legwarme
 
 ## Project overview
 
-Football betting analytics engine. Ingests fixtures + odds from Sportmonks, classifies
-each fixture into a (draw_zone × DF × bts_pocket) cell, and emits picks for the cells
-in the active V3.1 policy.
+Football betting analytics engine. Ingests pre-match fixtures and odds from Sportmonks, classifies each fixture into a **(draw_zone × BTS pocket)** cell, and emits picks for the 9 cells in the V3 static policy. The structured edge is in the partition — `draw_odd × bts_parent` reveals the layer where hit rates concentrate. Project 2 calibration confirmed that thesis; it has no role in the live engine until 6 weeks of pure V3 settlement validates it (Notes 27-05).
 
-**V3.1 policy (DF-aware partition — deployed 2026-05-27):**
-20 active cells from 28,425-fixture analysis, partitioned across 4 zones × DF tier × BTS pocket.
-DF (Difference Factor) is the rounded `|home_odd − away_odd|` and discriminates strongly within
-zones (alpha_win DF separates 22–26pp Tier A/B; threeway lifts up to 12.6pp DF0→DF2).
+**V3 policy (Session 11 baseline, restored Session 19 — 2026-05-28):**
+9 active cells, 4 markets. Hit rate is the only edge metric. No EV gates, no economic models, no DF as a partition key.
 
-Markets fired: goals_nl Over 1.5 (strong, standard), corners_nl Over 8.5 (standard only),
-dnb (low), alpha_win (one_sided). Low zone is **active** (LOW_ZONE_SUPPRESS = False).
-The previous V3 9-cell snapshot is superseded; live picks fire from `static_policy.V3_ACTIVE`.
+## Durable rules (do not violate without operator approval)
 
-## Current phase
+These rules exist because Sessions 12–18 drifted away from Project 1 — DF got introduced as a partition key, EV calibration findings retrofitted into the engine, doc state diverged. Session 19 (this) restores the framework. Future sessions must hold this line.
 
-**V3.1 policy live.** Picks fire from `static_policy.V3_ACTIVE` (NOT `compute_foundation`).
-`compute_foundation()` still runs for `/api/foundation` analysis display.
-DB (as of audit 2026-05-28): 51,057 fixtures (46,905 settled, 4,152 upcoming).
-emit_log: 613 rows — 275 settled (156W / 76L / 43V, 73.5% non-loss hit), 338 pending.
-fixture_stats: 38,574. Pipeline live; latest emit + settle within the past hour.
+1. **No DF as partition.** `df_of()` is removed from `classify.py`. The partition is `(zone, bts_pocket)`, 2-key. DF stays in the AI-Website analysis folder as a signal that may inform a *future* iteration only after step 4 below is satisfied.
+2. **No EV / economic models in the live engine.** Breakeven odds, EV, Wilson intervals — all stay in the analysis folder. The live engine measures, emits, settles, and reports hit rate. Nothing else gates picks.
+3. **Hit rate is the V3 non-loss convention.** `(wins + voids) / settled`. Voids (DNB draws) count as hits. Wilson is out.
+4. **Calibration cycle.** Project 2-style calibration runs *after* 6 weeks of live V3 settlement, not before. If a session wants to re-introduce DF or any other partition refinement, the precondition is 6 weeks of recorded V3 picks settled in this DB.
+5. **Per-market display.** Each market — goals_nl, corners_nl, dnb, alpha_win — has its own settlement count and hit-rate display per partition. Not blended. Not weighted outside the hit-rate foundation.
+6. **Foundation matrix splits on T1 and T2+T3.** Tier slices live; mixed tiers are noise.
+7. **No team form / position / predicted-uncertainty weighting.** Only odds drivers (zone × bts) + H2H corner counts (counts, not averages) are valid signals. Anything beyond those is research, not engine.
+
+## Current state
+
+- 9 active cells (`static_policy.V3_ACTIVE`):
+  - **strong** × {slight_over, slight_under} → goals_nl (Over 1.5)
+  - **standard** × {slight_over, strong_over, slight_under} → goals_nl + corners_nl (Over 8.5)
+  - **low** × {slight_over, slight_under} → dnb
+  - **one_sided** × {slight_over, slight_under} → alpha_win
+- **Markets fired:** goals_nl, corners_nl, dnb, alpha_win. Same four markets the Session 11 screenshot showed.
+- **Pick map by zone (V3):**
+  - strong / standard → DNB on 3-way; goals_nl + corners_nl on totals
+  - low → DNB on 3-way (operator-confirmed: do not switch to alpha_win without 6-week validation)
+  - one_sided → alpha_win on 3-way
+
+## Zone boundaries (raw-notes overlay)
+
+Updated Session 19 from the original V3 cutoffs because one_sided fixtures crept into low under the prior boundaries, contaminating low-zone hit rates around 50% and bleeding into standard.
+
+| Zone | draw_odd range | Notes |
+|------|---------------|-------|
+| (excluded) | `draw_odd < 2.90` | both_sided — too draw-heavy, not in policy |
+| `strong` | `2.90 ≤ draw_odd < 3.30` | |
+| `standard` | `3.30 ≤ draw_odd < 3.80` | The cleanest cell — evidence consistently points here |
+| `low` | `3.80 ≤ draw_odd < 4.30` | Was 4.10–4.80 under V3 prior — too wide, picked up extreme favourites |
+| `one_sided` | `draw_odd ≥ 4.30` | Was ≥ 4.80 — pulled down so genuine one-sided favourites are isolated |
+
+Old V3 baseline hit rates in `static_policy.V3_MARKETS` were computed against the prior cutoffs. They remain in place as reference until 6 weeks of live settlement under the new boundaries provides a recalibration baseline.
 
 ## Key files
 
 | File | Purpose |
 |------|---------|
-| `fetch_upcoming.py` | Daily — refresh pre-match odds (1X2, BTTS, goals_over_15/25/35, corners_over_75/85/95) and full kickoff datetimes from Sportmonks |
-| `emit_picks.py` | Calls local `/picks?days=3` to materialise picks into emit_log; writes heartbeat |
-| `refresh_odds.py` | Intraday odds refresh for fixtures kicking off within the next 8h (M2) |
-| `refresh_stats.py` | Backfill corner stats for settled fixtures Sportmonks delivered late (14d lookback, M3) |
-| `fetch_results.py` | After matches — write scores + fixture_stats (corners via type_id=34) |
-| `settle.py` | After fetch_results — write WIN/LOSS/VOID into pick_results (goals_nl, corners_nl, dnb, alpha_win) |
-| `app/engine/static_policy.py` | `V3_ACTIVE` / `V3_MARKETS` / `PROMOTED_CELLS` — authoritative live policy |
-| `app/engine/classify.py` | `zone_of()` + `bts_of()` + `df_of()` — three-axis classification |
-| `app/engine/promotion.py` | `compute_foundation()` + PROMOTE thresholds — display matrix only, not pick firing |
-| `app/engine/foundation.py` | `load_foundation(conn)` — settled fixture loader for the matrix |
-| `app/api/routes_picks.py` | `/picks` — reads `V3_ACTIVE`, derives DNB odd, writes emit_log with supersede logic |
-| `app/api/routes_foundation.py` | `GET /api/foundation` — full matrix JSON for Analysis tab |
-| `app/api/routes_diagnostics.py` | `/diagnostics/today_summary` + cron heartbeat (multi-metric, V3.1) |
-| `data/oddsflow_v4.db` | Live SQLite DB (not in git) |
-
-## Decisions made
-
-- **V3.1 policy (2026-05-27):** Picks fire from `static_policy.V3_ACTIVE` — not `compute_foundation()`.
-  `compute_foundation()` still runs for `/api/foundation` Analysis display.
-- **20 active cells** (zone × DF × bts_pocket):
-  - **strong (6 cells):** DF0/1/2 × {slight_over, slight_under} → goals_nl Over 1.5
-  - **standard (7 cells):** DF0/1 × {slight_over, strong_over}, DF2 × {slight_over, slight_under, strong_over} → goals_nl Over 1.5 + corners_nl Over 8.5
-  - **low (3 cells):** DF2 × {slight_over, slight_under, strong_over} → dnb (alpha-win-or-draw)
-  - **one_sided (4 cells):** DF2 × {slight_over, slight_under, strong_over, strong_under} → alpha_win
-- **DF (Difference Factor):** `round(|home_odd − away_odd|)` clipped to DF0/DF1/DF2. Source: `app/engine/classify.py:df_of()`.
-- **Low zone ACTIVATED** — `LOW_ZONE_SUPPRESS = False` in `static_policy.py`. (Note: `promotion.py` still defaults to `True` because that module powers the `/api/foundation` *display* matrix where low cells are reported as `MEASURING`; pick firing is independent.)
-- **Goals NL uses natural line only** ("Over 1.5 Goals") — no effective-line fallback. Consequence: `pick_odd` is NULL on ~95% of goals_nl rows and 100% of corners_nl rows because Sportmonks rarely quotes Over 1.5 / Over 8.5 (trivial lines). This is by design; SPA renders `—` for null odds via `fmt.odd`. EV layer (Project 3) will use breakeven_odds + bookmaker price comparison, not the stored `pick_odd`.
-- **Goals NL pick label:** "Over 1.5 Goals" — `settle.py` parses via regex `r"Over (\d+\.5) Goals"`.
-- **Corners NL pick label:** "Over 8.5 Corners" — `settle.py` parses via regex `r"Over (\d+\.5) Corners"`.
-- **settle.py** LEFT JOINs `fixture_stats` for corners_nl settlement.
-- **PROMOTED_CELLS fallback** in inspector/reports updated to V3.1 (20 cells).
-- **Drift tracking** is per (zone, df, bts_pocket, market) — corners_nl starts at `no_data` until enough recent settled rows exist.
-- **Analysis tab** calls `/api/foundation` with ALL/T1/T2+T3 sub-tabs (compute_foundation for display).
-- **`write_emit_log()`** supersedes stale unsettled picks when alpha team label changes.
-- **fetch_upcoming.py** stores full kickoff datetimes; monthly windows July–Oct at `max_pages=30`, other months at `max_pages=20`.
-- **Single SQLite DB** — no external DB services.
-- **`fixtures.league_id`** stores internal DB `leagues.id` (resolved via `_league_id_map`).
+| `fetch_upcoming.py` | Daily — refresh pre-match odds (1X2, BTTS, goals_over_15/25/35, corners_over_75/85/95) + kickoff datetimes |
+| `emit_picks.py` | Calls local `/picks?days=3` to materialise picks + writes heartbeat |
+| `refresh_odds.py` | Intraday odds refresh for next-8h fixtures (M2) |
+| `refresh_stats.py` | Corner-stats backfill (14d lookback, M3) |
+| `fetch_results.py` | After matches — scores + fixture_stats |
+| `settle.py` | After fetch_results — pick_results writer (goals_nl, corners_nl, dnb, alpha_win) |
+| `app/engine/static_policy.py` | `V3_ACTIVE` / `V3_MARKETS` / `PROMOTED_CELLS` — 9-cell V3 policy |
+| `app/engine/classify.py` | `zone_of()` (raw-notes boundaries) + `bts_of()` |
+| `app/engine/promotion.py` | `compute_foundation()` — display matrix only, not pick firing |
+| `app/api/routes_picks.py` | `/picks` — reads `V3_ACTIVE`, supersede logic |
+| `app/api/routes_foundation.py` | `/api/foundation` — Analysis tab |
+| `app/api/routes_diagnostics.py` | Multi-metric cron heartbeat across the 7 daily pipeline tasks |
+| `data/oddsflow_v4.db` | Live SQLite DB (not in git). Backups under `data/oddsflow_v4.db.bak.*` |
 
 ## Daily flow
 
-Order (run in sequence — `.\run_daily.ps1` chains them, otherwise each command runs once):
+Same as before — Task Scheduler runs the 12 jobs from `setup_scheduler.ps1`. Manual chain: `.\run_daily.ps1` (fetch_upcoming → emit_picks → fetch_results → settle).
 
-1. `python fetch_upcoming.py` — refresh pre-match odds + kickoff datetimes
-2. `python emit_picks.py` — call `/picks?days=3` and record heartbeat (the API write is what populates emit_log)
-3. `python fetch_results.py` — write scores + fixture_stats for completed fixtures
-4. `python settle.py` — settle pending picks from emit_log into pick_results
+| Time SAST | Task | Script |
+|-----------|------|--------|
+| At system start | OddsFlow_Server / OddsFlow_Ngrok | uvicorn + ngrok auto-restart |
+| 00:00 | OddsFlow_RefreshStats | refresh_stats.py — late-corners backfill |
+| 03:00 / 03:15 | OddsFlow_FetchResults_SA / Settle_SA | South American window |
+| 06:00 / 06:15 | OddsFlow_FetchResults_DawnSA / Settle_DawnSA | Late SA catch-up (M3) |
+| 08:00 / 08:05 | OddsFlow_FetchUpcoming / EmitPicks | Daily pre-match refresh + emit |
+| 14:30 | OddsFlow_RefreshOdds | Intraday refresh for next-8h fixtures (M2) |
+| 23:30 / 23:45 | OddsFlow_FetchResults / Settle | European window close |
 
-Optional / supporting scripts driven by the scheduler:
+## Decisions made
 
-- `python refresh_odds.py` — intraday odds refresh for fixtures kicking off within 8h
-- `python refresh_stats.py` — corner-stats backfill (14d lookback) for fixtures Sportmonks delivered late
-
-## Scheduler
-
-12 Windows Task Scheduler jobs registered via `setup_scheduler.ps1` (run once as Admin).
-Times below are SAST (UTC+2).
-
-| Time | Task | Script |
-|------|------|--------|
-| **At system start** | OddsFlow_Server | uvicorn on :8083 (auto-restart) |
-| **At system start** | OddsFlow_Ngrok | ngrok tunnel to :8083 (auto-restart) |
-| 00:00 | OddsFlow_RefreshStats | refresh_stats.py — backfill late corners |
-| 03:00 | OddsFlow_FetchResults_SA | fetch_results.py — South American window |
-| 03:15 | OddsFlow_Settle_SA | settle.py |
-| 06:00 | OddsFlow_FetchResults_DawnSA | fetch_results.py — late SA catch-up (M3) |
-| 06:15 | OddsFlow_Settle_DawnSA | settle.py |
-| 08:00 | OddsFlow_FetchUpcoming | fetch_upcoming.py |
-| 08:05 | OddsFlow_EmitPicks | emit_picks.py — call /picks?days=3 |
-| 14:30 | OddsFlow_RefreshOdds | refresh_odds.py — intraday refresh (M2) |
-| 23:30 | OddsFlow_FetchResults | fetch_results.py — European window close |
-| 23:45 | OddsFlow_Settle | settle.py |
-
-Each task writes its own `system_health` heartbeat keyed by the metric name (e.g. `fetch_upcoming`, `settle`, `emit_picks`). The Today-tab cron card looks at the most recent timestamp across *any* pipeline metric (not just `cron_heartbeat`).
+- **V3 restored (Session 19, 2026-05-28).** Picks fire from `V3_ACTIVE` (9 cells, 2-key). DF removed from classify and from all route lookups. `compute_foundation()` still serves the `/api/foundation` display.
+- **Zone boundaries shifted to raw-notes overlay** (2.90 / 3.30 / 3.80 / 4.30). Fixtures DB re-backfilled — 8,145 `draw_zone` updates.
+- **`df_level` columns retained on fixtures + emit_log** as additive historical metadata. New emit rows write NULL.
+- **Markets unchanged from V3:** goals_nl Over 1.5 (strong, standard), corners_nl Over 8.5 (standard only), dnb (low — confirmed per Session 11 screenshot), alpha_win (one_sided).
+- **Goals NL pick label** "Over 1.5 Goals" — `settle.py` regex `r"Over (\d+\.5) Goals"`.
+- **Corners NL pick label** "Over 8.5 Corners" — `settle.py` regex `r"Over (\d+\.5) Corners"`.
+- **Goals NL natural-line only** — no effective-line fallback. `pick_odd` NULL on most goals_nl / all corners_nl rows is expected; SPA renders `—` via `fmt.odd`.
+- **`write_emit_log()`** supersedes stale unsettled picks when alpha team label changes.
+- **fetch_upcoming.py** stores full kickoff datetimes; monthly windows; max_pages=30 (Jul–Oct), =20 elsewhere.
+- **`fixtures.league_id`** stores internal DB `leagues.id` (via `_league_id_map`).
+- **Hit-rate convention** = V3 non-loss (voids count as 1). Wilson reverted in Session 16.
 
 ## Pending / next
 
-- Project 2 calibration complete (2026-05-26):
-  - Output at `C:\OddsFlow AI Website\Output\PROJECT2_CALIBRATION_2026-05-26.xlsx`
-  - All V3.1 goals_nl/corners_nl cells NON_PROMOTE at avg market odds
-  - alpha_win T1 = HOLD (+0.007 to +0.010 EV) — only EV-positive cells
-  - Key metric: `breakeven_odds` per cell — any live price above this = EV+ bet
-  - Edge source: price comparison across bookmakers, not avg-odds betting
-- Project 3 (in design at `C:\OddsFlow AI Website`): live odds comparison layer — bookmaker price vs `breakeven_odds` per cell
-- Monitor V3.1 corners_nl drift over next 2 weeks (recent_n still low for several cells)
+- Monitor V3 settlement under new boundaries for 6 weeks. Recalibrate baseline hit rates after that.
+- Once recalibrated, decide whether DF should be re-introduced as a partition refinement (or stay an analytical signal). Until then, rule 1 holds.
+- Project 3 (live odds comparison vs breakeven) stays in draft in the AI Website folder. Build only after Project 1 validates under the new boundaries.
 
 ## Reference documents
 
 | Doc | Contents |
 |-----|----------|
-| `context/01_project_overview.md` | What, who, why (V3.1) |
+| `context/01_project_overview.md` | What / who / why (V3 + overlay) |
 | `context/02_league_config.md` | 30 leagues, tier assignments |
-| `context/03_engine_rules.md` | Classification (zone × DF × bts) + V3.1 policy + market rules |
+| `context/03_engine_rules.md` | Classification (zone × bts) + V3 policy + new boundaries |
 | `context/04_current_status.md` | Current state, known issues, session log |
 | `context/05_architecture.md` | File map, process flow, API routes, DB tables |
-| `context/06_process_flow.md` | Full fixture lifecycle — every phase, function, table, feedback loop |
+| `context/06_process_flow.md` | Full fixture lifecycle |
 | `context/07_system_language.md` | Every term defined; what exists vs what does not |
-| `context/engine_knowledge.md` | Engine knowledge — tabs, abbreviations, architecture |
-| `context/plan_group1_display.md` | Group 1 (G4/G7) — IMPLEMENTED, retained for audit trail |
-| `context/plan_group2_data_quality.md` | Group 2 (G2/G3) — IMPLEMENTED, retained for audit trail |
-| `context/plan_group3_automation.md` | Group 3 (G5/G6) — IMPLEMENTED, retained for audit trail |
+| `context/engine_knowledge.md` | Tabs + abbreviations + operating notes |
+| `context/plan_group1/2/3` | Historical implementation plans (IMPLEMENTED — audit trail) |
 
 ## Session checklist
 
 On start: scan directory → read CLAUDE.md → read `context/04_current_status.md`
 On end: update `context/04_current_status.md` → update this file → commit → push
+
+**Special rule:** if a session ends with a change to `static_policy.py`, `classify.py`, `promotion.py`, or zone/df logic anywhere — explicitly call out which Durable Rule (above) was affected and why the operator approved it. Default: do not change.

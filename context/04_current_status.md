@@ -1,11 +1,11 @@
 # Current Status — OddsFlow V4
 
 Update this file at the end of every session.
-Last updated: 2026-05-28 (Session 19 — V3.1 doc-drift sweep)
+Last updated: 2026-05-28 (Session 19 — V3 restoration + raw-notes zone overlay)
 
 ---
 
-## State: Running ✅
+## State: Running ✅ — V3 restored
 
 | Item | Detail |
 |------|--------|
@@ -14,19 +14,19 @@ Last updated: 2026-05-28 (Session 19 — V3.1 doc-drift sweep)
 | ngrok | https://steadier-legwarmer-finlike.ngrok-free.dev |
 | DB | `data/oddsflow_v4.db` |
 | GitHub | `github.com/kklefoka-arch/OddsFlowV4` |
-| Active policy | **V3.1** (DF-aware, 20 cells) — `static_policy.V3_ACTIVE` |
-| Fixtures | 51,057 total — 46,905 settled, 4,152 upcoming |
-| Fixture stats | 38,574 settled with corner stats |
-| emit_log | 613 rows — 275 settled, 338 pending |
-| pick_results | 275 rows — 156 WIN, 76 LOSS, 43 VOID (non-loss hit 73.5% in 7d window) |
-| By market (emit_log) | dnb 293, goals_nl 177, corners_nl 112, alpha_win 31 |
-| Leagues | 62 in DB (30 subscribed, 32 historical) — all named + tiered |
-| h2h_meetings | 58,881 |
-| Live picks via `/picks?days=7` | ~202 across 136 fixtures (varies by window) |
+| Active policy | **V3** (Session 11 baseline) — `static_policy.V3_ACTIVE`, 9 cells, 2-key (zone × bts) |
+| Zone boundaries | strong 2.90–3.30, standard 3.30–3.80, low 3.80–4.30, one_sided ≥4.30 (Session 19 raw-notes overlay) |
+| Fixtures | 51,057 total — 46,905 settled, 4,152 upcoming. draw_zone re-backfilled (8,145 updates). |
+| Fixture stats | 38,574 |
+| Distribution post-overlay | strong 7,789 / standard 13,140 / low 3,982 / one_sided 3,840 / excluded 22,306 |
+| emit_log | 613 rows (pre-restore). New emits will write under the V3 partition; existing rows keep their stored zone for historical fidelity. |
+| pick_results | 275 — 156W / 76L / 43V (non-loss 73.5% over the 7d window prior to restore) |
+| Leagues | 62 in DB (30 subscribed) |
+| DB backup before restore | `data/oddsflow_v4.db.bak.2026-05-28-session19` |
 
-## How to start (Windows)
+## How to start
 
-The server runs from Task Scheduler (`OddsFlow_Server`, at system start). To run manually:
+Server runs from Task Scheduler (`OddsFlow_Server`). Manual fallback:
 
 ```powershell
 Set-Location C:\OddsFlowV4
@@ -37,13 +37,12 @@ uvicorn app.main:app --host 0.0.0.0 --port 8083
 
 ```powershell
 python fetch_upcoming.py    # refresh odds + kickoff datetimes
-python emit_picks.py        # call /picks?days=3 → emit_log
+python emit_picks.py        # call /picks?days=3 -> emit_log
 python fetch_results.py     # write scores + fixture_stats
 python settle.py            # write pick_results
 ```
 
-The 12 Task Scheduler jobs (see `setup_scheduler.ps1`) run these scripts on staggered schedules
-across the European, South American, and SA-dawn windows. See `CLAUDE.md → Scheduler` for the table.
+12 scheduler jobs handle this automatically — see CLAUDE.md → Scheduler.
 
 ---
 
@@ -51,12 +50,13 @@ across the European, South American, and SA-dawn windows. See `CLAUDE.md → Sch
 
 | # | Item | Notes |
 |---|------|-------|
-| 1 | `pick_odd` NULL on 100% of corners_nl and ~95% of goals_nl rows | By design — natural-line-only policy (Over 1.5 Goals / Over 8.5 Corners are trivial overs Sportmonks rarely quotes). SPA renders `—` via `fmt.odd`. EV will be computed via Project 3 (breakeven_odds + bookmaker price comparison), not stored pick_odd. |
-| 2 | 96% of upcoming fixtures have no `draw_zone` | Not a bug — 3,985/4,152 upcoming have no `draw_odd` quoted yet by Sportmonks. Within the 7-day window, 41% (146/352) carry odds and classify correctly. `odd_but_no_zone = 0`. |
-| 3 | `LOW_ZONE_SUPPRESS` differs between modules | `static_policy.py = False` (pick firing — low zone active). `promotion.py = True` (foundation matrix display — shows low cells as `MEASURING`). Intentional split. |
-| 4 | Drift: `one_sided:DF2:slight_over` flagged `drifting` at −14.7pp (recent_n=21) | Early signal — monitor for 2 more weeks before any cell-level action. |
-| 5 | `pick_results.outcome` stores string `WIN`/`LOSS`/`VOID` (numeric value lives in `actual_value`) | Filter on `outcome='WIN'` or use `actual_value` for arithmetic. SQLite string-vs-number comparisons silently return garbage. |
-| 6 | 11 historical "duplicate" emit_log pairs | Both rows have pick_results (odds flipped mid-session, alpha team changed, both settled). Cannot delete. `write_emit_log()` supersede logic prevents new ones. |
+| 1 | `static_policy.V3_MARKETS` hit rates are pre-overlay | Historical baselines (e.g., low:slight_over 84.9% n=1733) were computed against the old 4.10–4.80 low range. Treat as reference; the next 6 weeks of settlement will yield the new baseline. Don't gate emission on these numbers. |
+| 2 | Old emit_log rows keep their pre-overlay `zone` value | Historical record — intentional. New emits use the new boundaries. Inspector/reports may show a small zone-boundary discontinuity around the restore date; expected. |
+| 3 | `pick_odd` NULL on 100% of corners_nl and ~95% of goals_nl rows | By design — natural-line-only policy (Over 1.5 Goals / Over 8.5 Corners rarely quoted by Sportmonks). SPA renders `—`. Future EV layer (Project 3) is gated on the 6-week validation. |
+| 4 | 96% of upcoming fixtures have no `draw_zone` | Not a bug — most upcoming fixtures don't yet carry a quoted `draw_odd`. Within the 7-day window, ~41% carry odds and classify. |
+| 5 | `LOW_ZONE_SUPPRESS` differs between modules | `static_policy.py = False` (pick firing — low zone active). `promotion.py = True` (foundation matrix display — low cells shown as `MEASURING`). Intentional split. |
+| 6 | `pick_results.outcome` stores string `WIN`/`LOSS`/`VOID` | Float lives in `actual_value`. Filter on `outcome='WIN'` or use `actual_value` — never numeric compare against `outcome`. |
+| 7 | `df_level` columns on fixtures + emit_log are inert | Retained from V3.1 schema (additive). New writes are NULL. Will be dropped only if Durable Rule 1 ever relaxes. |
 
 ---
 
@@ -64,15 +64,15 @@ across the European, South American, and SA-dawn windows. See `CLAUDE.md → Sch
 
 | Session | Date | Work done |
 |---------|------|-----------|
-| 1–8 | 2026-05-22 → 2026-05-24 | V4 built, SPA + 7 tabs, league fixes, classification + matrix wired, fetch_results.py created |
-| 9 | 2026-05-25 | 8-group fix plan: settle.py goals_nl support, supersede logic, monthly fetch windows, inspector/reports switched to live foundation |
-| 10 | 2026-05-25 | V3 policy deployed — `V3_ACTIVE` cells (9), goals_nl + corners_nl + dnb + alpha_win |
-| 11 | 2026-05-26 | First V3 settlement: 36 picks (22W 8L 6V) — goals_nl 85.7%, corners_nl 87.5%, DNB 6 voids |
-| 12 | 2026-05-26 | Project 2 calibration complete — breakeven_odds per cell, alpha_win T1 = HOLD (EV+) |
-| 13 | 2026-05-26 | Scheduler activated — first 5 Task Scheduler jobs |
-| 14 | 2026-05-26 | League migration analysis (Americas/Asia) — 17,403 fixture backtest |
-| 15 | 2026-05-27 | Process audit M1/M2/M3 — corners_nl settlement at API layer, refresh_odds for 8h horizon, dawn-SA catch-up |
-| 16 | 2026-05-27 | Hit-rate methodology — restored V3 non-loss convention (voids count as wins) |
-| 17 | 2026-05-27 | DF-aware enhanced analysis — DF separates picks 22–26pp on alpha_win, 12.6pp on threeway |
-| 18 | 2026-05-27 | **V3.1 live** — 20-cell partition (zone × DF × bts_pocket); scheduler expanded to 12 jobs; `min_n` lowered 50→45 to include `one_sided:DF2:strong_under` |
-| 19 | 2026-05-28 | Wide audit + doc-drift sweep — CLAUDE.md, all context docs, engine_knowledge, plan_group1-3, SPA, cron card aligned to V3.1 |
+| 1–8 | 2026-05-22 → 2026-05-24 | V4 built, SPA + 7 tabs, league fixes, classification + matrix wired |
+| 9 | 2026-05-25 | 8-group fix plan, supersede logic, monthly fetch windows |
+| 10 | 2026-05-25 | V3 policy deployed (9 cells, 4 markets) |
+| 11 | 2026-05-26 | First V3 settlement (22W 8L 6V); plain-language summary screenshot captured |
+| 12 | 2026-05-26 | Project 2 calibration completed — declared **reference-only, not a gate** |
+| 13 | 2026-05-26 | 5 scheduler tasks activated |
+| 14 | 2026-05-26 | League migration analysis (Americas/Asia) |
+| 15 | 2026-05-27 | Process audit M1/M2/M3 — corners settlement, refresh_odds, dawn SA catch-up |
+| 16 | 2026-05-27 | **Engine reverted to literal Session 11 reference** (first revert) |
+| 17 | 2026-05-27 | Enhanced analysis built from raw-notes spec — DF separation evidence, 6-pocket BTS |
+| 18 | 2026-05-27 | V3.1 DF-aware partition deployed (20 cells) — *the drift this session reversed* |
+| 19 | 2026-05-28 | **Second V3 restoration + raw-notes zone-boundary overlay**. DF removed everywhere. Boundaries 2.90/3.30/3.80/4.30. 8,145 draw_zone rows re-backfilled. Durable Rules pinned in CLAUDE.md to prevent re-drift. AI Website docs aligned. |

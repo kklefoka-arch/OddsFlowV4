@@ -2,7 +2,7 @@
 ## Gaps: G4 (Similar-Odds Inspector), G7 (Results Display)
 
 **Phase connection:** Phase 8 (Score Update) → Phase 10 (Reports) → Phase 12 (Validate/Drift)
-**Status:** IMPLEMENTED in Session 6 (Results tab + livescores + auto-settle hook + Inspector similar endpoint). This file is retained as an audit trail. Do not re-plan from it.
+**Status:** IMPLEMENTED in Session 6 (Results tab + livescores + auto-settle hook + Inspector similar endpoint). Retained as audit trail. Note: `/inspector/similar` was simplified back to 2-key `(zone, bts)` in Session 19 V3 restoration — the `df` optional filter introduced in V3.1 was removed.
 
 ---
 
