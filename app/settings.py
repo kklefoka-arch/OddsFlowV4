@@ -25,13 +25,15 @@ class Settings(BaseSettings):
     # Bundle 3 (Session 23d): HMAC shared secret for the Sportmonks Push
     # webhook receiver. Empty string disables the receiver — requests will
     # 401 until the operator sets a value via .env or shell env.
+    # NOTE: Sportmonks v3 does not document a public webhook subscription
+    # flow. The receiver is kept as scaffolding; the livescores poller
+    # (scripts/livescores_poller.py) is the actual real-time settlement path.
     SPORTMONKS_WEBHOOK_SECRET: str = ""
 
     # Bundle 5 (Session 23d): Runbook thresholds per pipeline task in hours.
     # /diagnostics/runbook flags a metric as overdue when (now - last_ok_ts)
     # exceeds the threshold. Per-task tuned to the natural cadence of the
-    # cron job that owns the metric (fetch_results = 8h matches the 23:30/
-    # 03:15/06:15 SAST rotation, emit_picks 26h matches the daily morning).
+    # cron job that owns the metric.
     RUNBOOK_THRESHOLDS: dict[str, float] = {
         "fetch_upcoming":          26.0,
         "emit_picks":              26.0,
@@ -42,7 +44,9 @@ class Settings(BaseSettings):
         "settle":                   8.0,
         "reconcile_orphans":       30.0,
         "sportmonks_webhook":       6.0,
-        "emit_partition_invalid": 168.0,  # 7d — informational, not a failure
+        "livescores_poller":        0.5,   # 30 min — poller runs every 5 min
+        "emit_partition_invalid": 168.0,   # 7d — informational, not a failure
+        "db_maintenance":         192.0,   # 8d — weekly task
     }
 
     model_config = {"env_file": ".env", "env_file_encoding": "utf-8"}

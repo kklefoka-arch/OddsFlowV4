@@ -69,6 +69,30 @@ Register-OddsFlowTask "OddsFlow_Settle_DawnSA"       "settle.py"          6 15
 # SA settle pass so it sees a fully-up-to-date settlement view.
 Register-OddsFlowTask "OddsFlow_ReconcileOrphans" "scripts/reconcile_orphans.py" 6 30
 
+# Livescores poller (Session 23d follow-up — replaces "Sportmonks webhook")
+# Sportmonks v3 does not document a public webhook subscription flow. The
+# documented real-time path is polling the livescores endpoint. This task
+# runs scripts/livescores_poller.py every 5 minutes, which calls the local
+# /api/livescores endpoint, auto-writes scores for finished fixtures, and
+# settles pending picks via the existing _write_and_settle() helper.
+# Effective settlement latency drops from ~8h worst case to ~5 min.
+$lsAction    = New-ScheduledTaskAction -Execute $python `
+                  -Argument "scripts/livescores_poller.py" `
+                  -WorkingDirectory $workdir
+$lsTrigger   = New-ScheduledTaskTrigger -Once -At (Get-Date) `
+                  -RepetitionInterval (New-TimeSpan -Minutes 5) `
+                  -RepetitionDuration (New-TimeSpan -Days 3650)
+$lsSettings  = New-ScheduledTaskSettingsSet `
+                  -ExecutionTimeLimit (New-TimeSpan -Minutes 4) `
+                  -MultipleInstances IgnoreNew `
+                  -StartWhenAvailable
+$lsPrincipal = New-ScheduledTaskPrincipal -UserId "$env:USERDOMAIN\$env:USERNAME" `
+                                            -LogonType S4U -RunLevel Highest
+Register-ScheduledTask -TaskName "OddsFlow_LivescoresPoller" -Action $lsAction `
+                       -Trigger $lsTrigger -Settings $lsSettings `
+                       -Principal $lsPrincipal -Force
+Write-Host "Registered: OddsFlow_LivescoresPoller  (every 5 min, MultipleInstances=IgnoreNew)" -ForegroundColor Green
+
 # Weekly DB maintenance (Session 23d Bundle 6)
 # PRAGMA optimize + ANALYZE + conditional VACUUM with dated backup.
 # Sundays 02:00 SAST — between Settle (Sat 23:45) and the SA fetch (Sun 03:00)
@@ -126,7 +150,7 @@ Register-ScheduledTask -TaskName "OddsFlow_Server" -Action $uvicornAction -Trigg
 Write-Host "Registered: OddsFlow_Server  (startup, restarts on failure)" -ForegroundColor Green
 
 Write-Host ""
-Write-Host "All 14 tasks registered." -ForegroundColor Cyan
+Write-Host "All 15 tasks registered." -ForegroundColor Cyan
 Write-Host "Verify in Task Scheduler: taskschd.msc -> Task Scheduler Library"
 Write-Host ""
 Write-Host "Times are LOCAL (SAST = UTC+2). Adjust if your clock differs."
