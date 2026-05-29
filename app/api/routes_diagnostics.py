@@ -397,13 +397,19 @@ def drift_report() -> dict[str, Any]:
     now = datetime.now(tz=timezone.utc)
     partitions = [
         {
-            "partition_key": f"{r['zone']}:{r['bts_v2']}",
+            # V3.2 partition_key — 3-part when df present, 2-part fallback for
+            # any legacy rows the drift code surfaces.
+            "partition_key": (
+                f"{r['zone']}:{r['df']}:{r['bts_v2']}" if r.get("df")
+                else f"{r['zone']}:{r['bts_v2']}"
+            ),
             "class":         "promote",
             "n_current":     r["recent_n"],
             "edge_current":  None,
             "hw_level":      None,
             "hw_trend":      None,
-            "wilson_95_lb":  None,
+            # wilson_95_lb removed Session 23c — Rule 1 override explicitly
+            # excluded Wilson; Rule 2 (no economic models) already excluded it.
             "conc_drop_pp":  None,
             "history_buckets": 1,
             "flag": ("ok" if r["flag"] == "stable" else
