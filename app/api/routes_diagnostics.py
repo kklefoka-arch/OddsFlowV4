@@ -340,6 +340,93 @@ def odds_coverage() -> dict[str, Any]:
 # GET /diagnostics/cron/heartbeat
 # ---------------------------------------------------------------------------
 
+@router.get("/runbook")
+def runbook() -> dict[str, Any]:
+    """Per-task overdue status for the runbook strip on the Today tab.
+
+    Bundle 5 (Session 23d). For every metric in ``settings.RUNBOOK_THRESHOLDS``:
+      - last_ok_ts:   most recent system_health row whose value starts ``ok:``.
+      - last_any_ts:  most recent system_health row of any kind.
+      - last_value:   value of that most recent row.
+      - threshold_h:  hours after which the task is considered overdue.
+      - overdue:      true iff no ok row in threshold window AND any task
+                      activity is older than threshold.
+      - last_error:   most recent value that starts ``error`` if present
+                      (informational; doesn't itself flag overdue).
+    """
+    thresholds = dict(getattr(settings, "RUNBOOK_THRESHOLDS", {}))
+    now = datetime.now(tz=timezone.utc)
+    conn = get_conn(settings.sqlite_path)
+    try:
+        tasks_out: list[dict[str, Any]] = []
+        overdue_count = 0
+        for metric, threshold_h in sorted(thresholds.items()):
+            last_ok = conn.execute(
+                """SELECT recorded_at, value FROM system_health
+                   WHERE metric = ? AND value LIKE 'ok%'
+                   ORDER BY recorded_at DESC LIMIT 1""",
+                (metric,),
+            ).fetchone()
+            last_any = conn.execute(
+                """SELECT recorded_at, value FROM system_health
+                   WHERE metric = ?
+                   ORDER BY recorded_at DESC LIMIT 1""",
+                (metric,),
+            ).fetchone()
+            last_err = conn.execute(
+                """SELECT recorded_at, value FROM system_health
+                   WHERE metric = ? AND value LIKE 'error%'
+                   ORDER BY recorded_at DESC LIMIT 1""",
+                (metric,),
+            ).fetchone()
+
+            def _age_h(row):
+                if not row or not row["recorded_at"]:
+                    return None
+                try:
+                    ts = datetime.fromisoformat(
+                        (row["recorded_at"] or "").replace(" ", "T")
+                    )
+                    if ts.tzinfo is None:
+                        ts = ts.replace(tzinfo=timezone.utc)
+                    return (now - ts).total_seconds() / 3600
+                except Exception:
+                    return None
+
+            age_ok = _age_h(last_ok)
+            age_any = _age_h(last_any)
+            # Overdue when: no ok row ever (age_ok is None and there's an
+            # error), or ok row older than threshold AND latest activity is
+            # also stale (so an error within window keeps overdue=False —
+            # operator sees the error but not yet a missing-cron condition).
+            if last_ok is None:
+                overdue = last_err is not None or last_any is not None
+            else:
+                overdue = age_ok is not None and age_ok > threshold_h
+            if overdue:
+                overdue_count += 1
+
+            tasks_out.append({
+                "metric":        metric,
+                "threshold_h":   threshold_h,
+                "last_ok_ts":    last_ok["recorded_at"] if last_ok else None,
+                "last_ok_age_h": round(age_ok, 2) if age_ok is not None else None,
+                "last_any_ts":   last_any["recorded_at"] if last_any else None,
+                "last_value":    last_any["value"] if last_any else None,
+                "last_error":    last_err["value"] if last_err else None,
+                "overdue":       overdue,
+            })
+    finally:
+        conn.close()
+
+    return {
+        "as_of":         now.isoformat(),
+        "overdue_count": overdue_count,
+        "ok_count":      len(tasks_out) - overdue_count,
+        "tasks":         tasks_out,
+    }
+
+
 @router.get("/cron/heartbeat")
 def cron_heartbeat() -> dict[str, Any]:
     """Last pipeline heartbeat in system_health (any of the 12 daily tasks).

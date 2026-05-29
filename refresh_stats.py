@@ -25,7 +25,8 @@ DB    = r"C:\OddsFlowV4\data\oddsflow_v4.db"
 BASE  = "https://api.sportmonks.com/v3/football"
 
 CORNERS_TYPE_ID = 34
-LOOKBACK_DAYS = 14
+LOOKBACK_DAYS = 14  # base window; adaptive cap below
+LOOKBACK_MAX_DAYS = 60  # Bundle 6: don't reach further than this even with stranded picks
 
 
 def api_get(path: str, params: dict, retries: int = 3) -> dict:
@@ -79,7 +80,38 @@ conn = sqlite3.connect(DB)
 conn.row_factory = sqlite3.Row
 now_utc = datetime.now(timezone.utc)
 now_ts  = now_utc.strftime("%Y-%m-%d %H:%M:%S")
-cutoff  = (now_utc - timedelta(days=LOOKBACK_DAYS)).strftime("%Y-%m-%d")
+
+# Bundle 6 (Session 23d) — adaptive lookback. If a corners_nl pick is sitting
+# unsettled because the fixture has no fixture_stats row, stretch the window
+# to cover it. Stops corners published late by Sportmonks from being stranded
+# by the old hard 14-day cap. Capped at LOOKBACK_MAX_DAYS so the script
+# doesn't scan the whole DB every night.
+adaptive_row = conn.execute("""
+    SELECT MIN(f.date) AS oldest
+    FROM emit_log em
+    JOIN fixtures f ON f.id = em.fixture_id
+    LEFT JOIN pick_results pr ON pr.pick_uuid = em.pick_uuid
+    LEFT JOIN fixture_stats fs ON fs.fixture_id = f.id
+    WHERE em.market = 'corners_nl'
+      AND pr.pick_uuid IS NULL
+      AND f.home_score IS NOT NULL
+      AND fs.fixture_id IS NULL
+""").fetchone()
+adaptive_oldest = adaptive_row["oldest"] if adaptive_row else None
+adaptive_days = LOOKBACK_DAYS
+if adaptive_oldest:
+    try:
+        oldest_dt = datetime.fromisoformat(adaptive_oldest.replace(" ", "T"))
+        if oldest_dt.tzinfo is None:
+            oldest_dt = oldest_dt.replace(tzinfo=timezone.utc)
+        adaptive_days = min(
+            LOOKBACK_MAX_DAYS,
+            max(LOOKBACK_DAYS, int((now_utc - oldest_dt).days) + 1),
+        )
+    except Exception:
+        adaptive_days = LOOKBACK_DAYS
+cutoff  = (now_utc - timedelta(days=adaptive_days)).strftime("%Y-%m-%d")
+print(f"Adaptive lookback: {adaptive_days}d (base {LOOKBACK_DAYS}, cap {LOOKBACK_MAX_DAYS})")
 
 # Settled fixtures with no fixture_stats row, in lookback window.
 missing = conn.execute("""
@@ -93,7 +125,7 @@ missing = conn.execute("""
     ORDER BY f.date DESC
 """, (cutoff,)).fetchall()
 
-print(f"Settled fixtures missing corner stats (last {LOOKBACK_DAYS}d): {len(missing)}")
+print(f"Settled fixtures missing corner stats (last {adaptive_days}d): {len(missing)}")
 if not missing:
     conn.execute(
         "INSERT INTO system_health (metric, value) VALUES (?, ?)",

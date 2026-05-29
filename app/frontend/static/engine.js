@@ -58,6 +58,8 @@ async function loadToday() {
   summary.innerHTML  = '';
   byMarket.innerHTML = '';
   if (recentFail) recentFail.textContent = '—';
+  // Bundle 5 — fire-and-forget runbook fetch alongside the main today summary.
+  loadRunbookStrip();
   try {
     const r = await fetch('/diagnostics/today_summary');
     const body = await r.json();
@@ -361,8 +363,8 @@ function renderFixtureCard(picks) {
     if (!byMarket.has(p.market)) byMarket.set(p.market, []);
     byMarket.get(p.market).push(p);
   }
-  const order = ['total_goals', 'total_corners', 'dnb', 'alpha_win', 'goals_nl'];
-  const marketRows = order
+  warnUnknownMarkets(picks);
+  const marketRows = MARKET_ORDER
     .filter(m => byMarket.has(m))
     .map(m => renderMarketRow(m, byMarket.get(m)))
     .join('');
@@ -410,14 +412,34 @@ function renderDriftChipForCard(flag, gap_pp, recent_n) {
   return `<span class="${cls}" title="${tooltip}">${flag}${gap}${n}</span>`;
 }
 
+// MARKET_LABELS + MARKET_ORDER — single source of truth.
+// Any pick the API emits whose `market` is not a key here will trigger a
+// console.warn from `warnUnknownMarkets()` so silent UI dropouts surface
+// immediately. Add new markets in BOTH places (label + order position).
+const MARKET_LABELS = {
+  total_goals:   'Goals',
+  total_corners: 'Corners',
+  dnb:           'DNB (Alpha Win or Draw)',
+  alpha_win:     'Alpha Win',
+  goals_nl:      'Goals — Natural Line',
+  corners_nl:    'Corners — Natural Line',
+};
+const MARKET_ORDER = ['total_goals', 'total_corners', 'dnb', 'alpha_win', 'goals_nl', 'corners_nl'];
+
 function marketLabel(m) {
-  return {
-    total_goals:   'Goals',
-    total_corners: 'Corners',
-    dnb:           'DNB (Alpha Win or Draw)',
-    alpha_win:     'Alpha Win',
-    goals_nl:      'Goals — Natural Line',
-  }[m] || m;
+  return MARKET_LABELS[m] || m;
+}
+
+// Warn once per session for any market the API emits but we don't render.
+const _warnedMarkets = new Set();
+function warnUnknownMarkets(picks) {
+  if (!picks || !picks.length) return;
+  for (const p of picks) {
+    if (p && p.market && !(p.market in MARKET_LABELS) && !_warnedMarkets.has(p.market)) {
+      _warnedMarkets.add(p.market);
+      console.warn(`[OddsFlow] pick with unrecognised market="${p.market}" — add to MARKET_LABELS + MARKET_ORDER in engine.js. Dropping silently from UI until then.`);
+    }
+  }
 }
 
 function renderMarketRow(market, picks) {
@@ -1140,8 +1162,8 @@ function openInspector(picks) {
     if (!byMarket.has(p.market)) byMarket.set(p.market, []);
     byMarket.get(p.market).push(p);
   }
-  const order = ['total_goals', 'total_corners', 'dnb', 'alpha_win', 'goals_nl'];
-  const marketBlocks = order
+  warnUnknownMarkets(list);
+  const marketBlocks = MARKET_ORDER
     .filter(m => byMarket.has(m))
     .map(m => {
       const ps = byMarket.get(m);
@@ -1193,6 +1215,36 @@ function openInspector(picks) {
       if (zone && bts) loadInspectorSimilar(zone, bts, null);
     }
   }
+}
+
+// Bundle 5 (Session 23d) — runbook strip on Today tab.
+// Polls /diagnostics/runbook and renders per-task overdue badges.
+let _runbookTimer = null;
+async function loadRunbookStrip() {
+  const el = document.getElementById('today-runbook');
+  if (!el) return;
+  try {
+    const r = await fetch('/diagnostics/runbook');
+    const body = await r.json();
+    const cards = (body.tasks || []).map(t => {
+      const cls = t.overdue ? 'chip chip-negative' : 'chip chip-positive';
+      const age = t.last_ok_age_h != null ? `${t.last_ok_age_h.toFixed(1)}h` : '—';
+      const errTip = t.last_error
+        ? `Most recent error row in system_health: ${(t.last_error || '').replace(/"/g, '&quot;')}`
+        : '';
+      const tooltip = `threshold ${t.threshold_h}h · last ok ${age} ago · ${t.last_value || '(no rows)'}${errTip ? '\n' + errTip : ''}`;
+      return `<span class="${cls}" title="${tooltip}">${t.metric} · ${age}</span>`;
+    }).join(' ');
+    const summary = body.overdue_count > 0
+      ? `<strong class="negative">${body.overdue_count} overdue</strong> · ${body.ok_count} ok`
+      : `<strong class="positive">all ${body.ok_count} ok</strong>`;
+    el.innerHTML = `<div class="card" style="padding:10px"><div style="margin-bottom:6px">${summary}</div>${cards}</div>`;
+  } catch (e) {
+    el.innerHTML = `<div class="empty">Runbook unavailable: ${e}</div>`;
+  }
+  // Re-arm the polling timer (60s).
+  if (_runbookTimer) clearTimeout(_runbookTimer);
+  _runbookTimer = setTimeout(loadRunbookStrip, 60_000);
 }
 
 // ---- Upcoming fixtures ----

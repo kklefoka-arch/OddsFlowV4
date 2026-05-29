@@ -169,15 +169,26 @@ def _compute_cell_drift(conn: sqlite3.Connection, zone: str, df: str, bts: str,
 def write_emit_log(conn: sqlite3.Connection, emit_rows: list[dict]) -> dict[str, Any]:
     """Write picks to emit_log. INSERT OR IGNORE on pick_uuid (idempotent).
 
+    - Boundary safety (Session 23d Bundle 4): every row's (zone, df, bts) is
+      validated against V3_ACTIVE before INSERT. Anything outside the active
+      partition set is rejected and counted as ``partition_invalid``. Prevents
+      a classify bug or schema mismatch from polluting the DB.
     - If the row already exists and pick_odd is NULL, backfill pick_odd.
     - If a different pick for the same (fixture_id, market) exists without a
       pick_results row, supersede it: delete the stale row first, then insert.
     """
     now_sql = datetime.now(tz=timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
+    live_keys = set(V3_ACTIVE.keys())
     new_count = 0
     skip_count = 0
     updated_count = 0
+    invalid_count = 0
     for p in emit_rows:
+        # Boundary check — Bundle 4. (zone, df, bts) must be in V3_ACTIVE.
+        cell_key = (p.get("zone"), p.get("df"), p.get("bts_pocket"))
+        if cell_key not in live_keys:
+            invalid_count += 1
+            continue
         uuid = make_pick_uuid(p["fixture_id"], p["market"], p["pick"])
         conn.execute(
             """
@@ -225,7 +236,23 @@ def write_emit_log(conn: sqlite3.Connection, emit_rows: list[dict]) -> dict[str,
             else:
                 skip_count += 1
     conn.commit()
-    return {"new": new_count, "skip": skip_count, "updated": updated_count}
+    if invalid_count:
+        # Surface boundary rejections in system_health so the runbook (Bundle 5)
+        # can flag this. Best-effort — never raise out of the writer.
+        try:
+            conn.execute(
+                "INSERT INTO system_health (metric, value) VALUES (?, ?)",
+                ("emit_partition_invalid", f"rejected={invalid_count}"),
+            )
+            conn.commit()
+        except Exception:
+            pass
+    return {
+        "new":               new_count,
+        "skip":              skip_count,
+        "updated":           updated_count,
+        "partition_invalid": invalid_count,
+    }
 
 
 # ---------------------------------------------------------------------------

@@ -159,3 +159,19 @@ conn.execute(
 conn.commit()
 conn.close()
 print(f"Done — refreshed {updated}/{len(upcoming)}  errors={errors}")
+
+# Bundle 2 (Session 23d) — chained re-emit. If any odds landed, fixtures that
+# were unclassifiable at 08:00 may have become classifiable. Trigger a re-emit
+# so the picks tab reflects the new state same-day instead of waiting until
+# tomorrow's 08:00 chain.
+if updated > 0:
+    import subprocess, sys
+    try:
+        rc = subprocess.run(
+            [sys.executable, "emit_picks.py", "--mode", "reemit"],
+            cwd=os.path.dirname(os.path.abspath(__file__)),
+            timeout=60,
+        ).returncode
+        print(f"Re-emit chained call returned rc={rc}")
+    except Exception as exc:
+        print(f"Re-emit chain failed: {exc}")

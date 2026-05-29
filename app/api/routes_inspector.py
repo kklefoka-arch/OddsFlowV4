@@ -62,13 +62,27 @@ def compute_drift_rows(
     recent_days: int = 30,
     min_sample_n: int = DRIFT_MIN_N,
 ) -> list[dict[str, Any]]:
-    """Drift per live-promoted cell: historical hit vs recent emit_log (3-key)."""
-    live_promoted = _get_live_promoted(conn)
-    cutoff = (datetime.now(tz=timezone.utc) - timedelta(days=recent_days)).strftime("%Y-%m-%d %H:%M:%S")
+    """Drift per live-promoted cell: historical hit vs recent emit_log (3-key).
 
+    Bundle 6 (Session 23d) — adaptive window. Sparse cells that don't hit
+    ``min_sample_n`` inside ``recent_days`` expand their lookup window in
+    15-day steps up to 90 days. Stops rare zones (DF0 in low, strong_under
+    in standard etc.) from being permanently invisible as ``no_data``.
+    The ``window_days`` field on each row tells the operator which window
+    the comparison ended up using.
+    """
+    live_promoted = _get_live_promoted(conn)
+    expanded_windows = sorted({recent_days, 45, 60, 75, 90})
+
+    # Pull the longest window once; bucket per cell with both n_per_window
+    # and hits_per_window so the per-cell pass can pick the smallest window
+    # that satisfies min_sample_n.
+    longest = max(expanded_windows)
+    cutoff_long = (datetime.now(tz=timezone.utc) - timedelta(days=longest)).strftime("%Y-%m-%d %H:%M:%S")
     recent_rows = conn.execute(
         """
         SELECT em.zone, em.df_level, em.bts_pocket, em.market, em.pick,
+               em.emitted_at,
                f.home_score, f.away_score, f.home_odd, f.away_odd,
                fs.total_corners
         FROM emit_log em
@@ -77,13 +91,12 @@ def compute_drift_rows(
         WHERE em.emitted_at >= ?
           AND f.home_score IS NOT NULL AND f.away_score IS NOT NULL
         """,
-        (cutoff,),
+        (cutoff_long,),
     ).fetchall()
 
-    # V3 non-loss hit rate (voids count as 1). corners_nl needs total_corners.
-    # Legacy V3 rows have em.df_level=NULL; they are skipped (not poisoning the
-    # drift comparison for the V3.2 partition).
-    recent: dict[tuple[str, str, str], dict[str, int]] = {}
+    now_utc = datetime.now(tz=timezone.utc)
+    # Per-cell -> {window_days: {hits, n}}.
+    per_cell: dict[tuple[str, str, str], dict[int, dict[str, int]]] = {}
     for r in recent_rows:
         if r["df_level"] is None:
             continue
@@ -95,18 +108,41 @@ def compute_drift_rows(
                                 total_corners=r["total_corners"]))
         if h is None:
             continue
-        if key not in recent:
-            recent[key] = {"hits": 0, "n": 0}
-        recent[key]["hits"] += h
-        recent[key]["n"] += 1
+        try:
+            ts = datetime.fromisoformat((r["emitted_at"] or "").replace(" ", "T"))
+            if ts.tzinfo is None:
+                ts = ts.replace(tzinfo=timezone.utc)
+            age_days = (now_utc - ts).days
+        except Exception:
+            continue
+        for w in expanded_windows:
+            if age_days <= w:
+                slot = per_cell.setdefault(key, {}).setdefault(w, {"hits": 0, "n": 0})
+                slot["hits"] += h
+                slot["n"] += 1
 
     rows: list[dict[str, Any]] = []
     for (zone, df, bts), cell in sorted(live_promoted.items()):
         hist_pct = cell["threeway_hit"]
         hist_n = cell.get("n_fixtures", cell.get("n", 0))
-        rec = recent.get((zone, df, bts), {"hits": 0, "n": 0})
-        r_n = rec["n"]
-        r_hit = round(rec["hits"] / r_n * 100, 1) if r_n > 0 else None
+        windows_for_cell = per_cell.get((zone, df, bts), {})
+        # Smallest window meeting min_sample_n; fall back to base window.
+        chosen_window = recent_days
+        chosen_data = windows_for_cell.get(recent_days, {"hits": 0, "n": 0})
+        if chosen_data["n"] < min_sample_n:
+            for w in expanded_windows:
+                d = windows_for_cell.get(w, {"hits": 0, "n": 0})
+                if d["n"] >= min_sample_n:
+                    chosen_window = w
+                    chosen_data = d
+                    break
+            else:
+                # None hit min_sample_n — return the longest window's data
+                # rather than zeros so the operator can still see the count.
+                chosen_window = longest
+                chosen_data = windows_for_cell.get(longest, {"hits": 0, "n": 0})
+        r_n = chosen_data["n"]
+        r_hit = round(chosen_data["hits"] / r_n * 100, 1) if r_n > 0 else None
         gap_pp = round(r_hit - hist_pct, 1) if r_hit is not None else None
         flag = _drift_flag(gap_pp, r_n, min_sample_n)
         rows.append({
@@ -118,6 +154,7 @@ def compute_drift_rows(
             "historical_hit": hist_pct,
             "recent_n":       r_n,
             "recent_hit":     r_hit,
+            "window_days":    chosen_window,
             "gap_pp":         gap_pp,
             "flag":           flag,
         })
