@@ -121,7 +121,14 @@ def get_results(
     days: int = Query(7, ge=1, le=90),
     league_id: int | None = Query(None),
 ) -> dict[str, Any]:
-    """Recently settled fixtures from the DB with pick-outcome overlay."""
+    """Recently settled fixtures from the DB with pick-outcome overlay.
+
+    Note: only includes fixtures whose ``date`` is in the past — guards against
+    future-dated rows that have somehow acquired a ``home_score`` (e.g. early-write
+    races, Sportmonks ID drift). Without this guard, tomorrow's Copa Libertadores
+    fixture with a stale score would surface in the "recent results" feed.
+    """
+    now_iso = datetime.now(tz=timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
     cutoff = (datetime.now(tz=timezone.utc) - timedelta(days=days)).strftime("%Y-%m-%d")
     conn = get_conn(settings.sqlite_path)
     try:
@@ -144,8 +151,9 @@ def get_results(
             LEFT JOIN pick_results pr   ON pr.pick_uuid = em.pick_uuid
             WHERE f.home_score IS NOT NULL
               AND substr(f.date, 1, 10) >= ?
+              AND f.date < ?
         """
-        args: list[Any] = [cutoff]
+        args: list[Any] = [cutoff, now_iso]
         if league_id is not None:
             q += " AND f.league_id = ?"
             args.append(league_id)

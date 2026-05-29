@@ -18,7 +18,7 @@ from app.engine.natural_lines import HALF_LINES, ZONES, BTS_POCKETS, natural_lin
 PROMOTE_THRESHOLD: float = 72.0      # % — hard promote
 PROMOTE_LOWER: float = 67.5          # % — tolerance band lower bound
 DROP_SECONDARY_GAP: float = 4.5      # pp — max extra drop vs rank-1 cell
-LOW_ZONE_SUPPRESS: bool = True        # low zone overrides PROMOTE → MEASURING
+LOW_ZONE_SUPPRESS: bool = False       # Session 23: aligned with static_policy.py (low zone fires live → display PROMOTE)
 
 # Status string constants — exported for use in pick/route logic
 PROMOTE: str = "PROMOTE"

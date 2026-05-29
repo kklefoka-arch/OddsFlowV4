@@ -48,9 +48,18 @@ async def foundation_json() -> dict:
     so downstream tools can key off the same string the rest of the API uses
     (inspector drift, reports, picks).
 
+    ``cell_promoted`` is overlaid from ``V3_ACTIVE`` — the live pick policy —
+    rather than the foundation algorithm's per-cell threshold. The foundation
+    algorithm's per-market ``goals_promote`` / ``corners_promote`` /
+    ``threeway_promote`` strings are preserved alongside (they reflect the
+    foundation matrix's own per-market evaluation under PROMOTE_THRESHOLD).
+    This way the Analysis tab shows what is actually firing live; the
+    per-market columns still show the historical-threshold story.
+
     Returns:
         Dict with keys ``all``, ``t1``, ``t2t3``, and ``summary``.
     """
+    from app.engine.static_policy import V3_ACTIVE  # local import — avoid circular
     conn = get_conn(settings.sqlite_path)
     try:
         rows = load_foundation(conn)
@@ -58,7 +67,15 @@ async def foundation_json() -> dict:
         conn.close()
 
     data = compute_foundation(rows)
+    live_keys = set(V3_ACTIVE.keys())
+    promoted_count = 0
     for section in ("all", "t1", "t2t3"):
         for cell in data.get(section, []) or []:
-            cell["partition_key"] = f"{cell['zone']}:{cell['bts_pocket']}"
+            key = (cell["zone"], cell["bts_pocket"])
+            cell["partition_key"] = f"{key[0]}:{key[1]}"
+            cell["cell_promoted"] = key in live_keys
+            if section == "all" and cell["cell_promoted"]:
+                promoted_count += 1
+    if isinstance(data.get("summary"), dict):
+        data["summary"]["promoted_cells"] = promoted_count
     return data

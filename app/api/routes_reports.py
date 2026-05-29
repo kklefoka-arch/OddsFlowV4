@@ -378,6 +378,38 @@ def emit_market_breakdown(
             """,
             [cutoff.strftime("%Y-%m-%d %H:%M:%S"), *tier_params],
         ).fetchall()
+        # Settlement status — keyed by kickoff window (24h / 48h / 7d) so the
+        # operator can read "is yesterday settled?" without a DB query.
+        # Buckets per (market, window):
+        #   settled     — pick_results row exists
+        #   pending_no_score  — fixture not yet finished (home_score IS NULL)
+        #   pending_with_score — fixture finished but settler hasn't run
+        #                        (typically corners awaiting fixture_stats)
+        settlement_window_rows = conn.execute(
+            f"""
+            SELECT em.market,
+                   CASE
+                       WHEN f.date >= datetime('now','-24 hours') AND f.date < datetime('now') THEN '24h'
+                       WHEN f.date >= datetime('now','-48 hours') AND f.date < datetime('now','-24 hours') THEN '48h'
+                       WHEN f.date >= datetime('now','-7 days')   AND f.date < datetime('now','-48 hours') THEN '7d'
+                       ELSE 'older'
+                   END AS window,
+                   CASE
+                       WHEN pr.pick_uuid IS NOT NULL THEN 'settled'
+                       WHEN f.home_score IS NULL     THEN 'pending_no_score'
+                       ELSE                                'pending_with_score'
+                   END AS state,
+                   COUNT(*) AS n
+            FROM emit_log em
+            JOIN fixtures f ON f.id = em.fixture_id
+            LEFT JOIN pick_results pr ON pr.pick_uuid = em.pick_uuid
+            LEFT JOIN leagues lg ON lg.id = f.league_id
+            WHERE f.date >= datetime('now','-7 days')
+              AND f.date <  datetime('now'){tier_clause}
+            GROUP BY em.market, window, state
+            """,
+            [*tier_params],
+        ).fetchall()
         from app.engine.static_policy import V3_ACTIVE, V3_MARKETS
         live_promoted_keys: set[tuple[str, str]] = set(V3_ACTIVE.keys())
     finally:
@@ -500,14 +532,43 @@ def emit_market_breakdown(
             "total":    slot.get("played", 0) + slot.get("upcoming", 0),
         })
 
+    # settlement_status_windows — pivot rows into per-window per-market.
+    sw_buckets: dict[tuple[str, str], dict[str, int]] = {}
+    for r in settlement_window_rows:
+        key = (r["market"], r["window"])
+        slot = sw_buckets.setdefault(key, {
+            "settled": 0, "pending_no_score": 0, "pending_with_score": 0,
+        })
+        slot[r["state"]] = r["n"]
+    settlement_status_out = []
+    for window in ("24h", "48h", "7d"):
+        per_market = []
+        for market in sorted({m for (m, w) in sw_buckets.keys() if w == window}):
+            slot = sw_buckets.get((market, window), {})
+            settled = slot.get("settled", 0)
+            pns = slot.get("pending_no_score", 0)
+            pws = slot.get("pending_with_score", 0)
+            total = settled + pns + pws
+            pct = round(100 * settled / total, 1) if total else None
+            per_market.append({
+                "market":             market,
+                "total":              total,
+                "settled":            settled,
+                "pending_no_score":   pns,   # fixture not yet finished
+                "pending_with_score": pws,   # fixture finished, awaiting settler (corners gap)
+                "settled_pct":        pct,
+            })
+        settlement_status_out.append({"window": window, "markets": per_market})
+
     return {
-        "as_of":               datetime.now(tz=timezone.utc).isoformat(),
-        "window_days":         days,
-        "tier":                tier,
-        "cells":               list(cells.values()),
-        "markets_summary":     markets_summary_out,
-        "zone_market_summary": zone_market_out,
-        "pending_breakdown":   pending_out,
+        "as_of":                     datetime.now(tz=timezone.utc).isoformat(),
+        "window_days":               days,
+        "tier":                      tier,
+        "cells":                     list(cells.values()),
+        "markets_summary":           markets_summary_out,
+        "zone_market_summary":       zone_market_out,
+        "pending_breakdown":         pending_out,
+        "settlement_status_windows": settlement_status_out,
     }
 
 

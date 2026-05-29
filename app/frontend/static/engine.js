@@ -820,6 +820,48 @@ function renderPendingBreakdown(rows) {
   `;
 }
 
+function renderSettlementStatus(windows) {
+  const el = document.getElementById('reports-settlement-status');
+  if (!windows || windows.length === 0) {
+    el.innerHTML = '<div class="empty">No kickoffs in the last 7 days.</div>';
+    return;
+  }
+  const windowLabel = (w) => ({'24h': 'Last 24h', '48h': '24–48h ago', '7d': '2–7 days ago'}[w] || w);
+  const sections = windows.map(win => {
+    if (!win.markets || win.markets.length === 0) {
+      return `<div class="market-bd-cell">
+        <div class="market-bd-header"><strong>${windowLabel(win.window)}</strong> <span class="muted">no emits</span></div>
+      </div>`;
+    }
+    const tr = win.markets.map(m => {
+      const pctCls = m.settled_pct == null ? '' :
+        (m.settled_pct >= 90 ? 'positive' : (m.settled_pct < 50 ? 'negative' : ''));
+      const gapCls = m.pending_with_score > 0 ? 'negative' : 'muted';
+      return `<tr>
+        <td><strong>${marketLabel(m.market)}</strong></td>
+        <td class="numeric">${m.total}</td>
+        <td class="numeric positive">${m.settled}</td>
+        <td class="numeric ${gapCls}">${m.pending_with_score}</td>
+        <td class="numeric muted">${m.pending_no_score}</td>
+        <td class="numeric ${pctCls}"><strong>${m.settled_pct != null ? m.settled_pct + '%' : '—'}</strong></td>
+      </tr>`;
+    }).join('');
+    return `
+      <div class="market-bd-cell" style="margin-bottom:8px">
+        <div class="market-bd-header"><strong>${windowLabel(win.window)}</strong></div>
+        <table class="performance-table" style="margin-top:6px">
+          <thead><tr>
+            <th>Market</th><th>Emits</th><th>Settled</th>
+            <th>Pending (with score)</th><th>Pending (no score)</th><th>Settled %</th>
+          </tr></thead>
+          <tbody>${tr}</tbody>
+        </table>
+      </div>
+    `;
+  }).join('');
+  el.innerHTML = sections;
+}
+
 async function loadReportsSettleActivity(days) {
   const el = document.getElementById('reports-settle-activity');
   el.innerHTML = '<div class="muted">Loading…</div>';
@@ -933,6 +975,7 @@ async function loadReportsEmitMarketBreakdown(days, tier) {
     renderMarketsSummary(body.markets_summary);
     renderZoneMarket(body.zone_market_summary);
     renderPendingBreakdown(body.pending_breakdown);
+    renderSettlementStatus(body.settlement_status_windows);
 
     if (!body.cells || body.cells.length === 0) {
       el.innerHTML = '<div class="empty">No engine emits in window.</div>';
