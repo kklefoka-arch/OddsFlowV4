@@ -43,10 +43,9 @@ def upcoming(
             except ValueError:
                 pass
 
-    # V3 stone policy directly (the authoritative promotion set), not a
-    # re-derivation from live data. Fixes M4 (Session 15 process audit).
+    # V3.2 stone policy directly (the authoritative promotion set, 3-key).
     from app.engine.static_policy import V3_ACTIVE
-    promoted_keys: set[tuple[str, str]] = set(V3_ACTIVE.keys())
+    promoted_keys: set[tuple[str, str, str]] = set(V3_ACTIVE.keys())
 
     conn = get_conn(settings.sqlite_path)
     try:
@@ -83,7 +82,8 @@ def upcoming(
         clf = classify_fixture(d)
         zone = clf.get("zone")
         bts = clf.get("bts_pocket")
-        partition_promoted = bool(zone and bts and (zone, bts) in promoted_keys)
+        df = clf.get("df")
+        partition_promoted = bool(zone and bts and df and (zone, df, bts) in promoted_keys)
 
         tier_key = str(d.get("league_tier") or d.get("tier") or "")
         if tier_key:
@@ -106,6 +106,7 @@ def upcoming(
             "btts_yes_odd":    d.get("btts_yes_odd"),
             "btts_no_odd":     d.get("btts_no_odd"),
             "zone_group":      zone or "—",
+            "df":              df or "—",
             "bts_v2":          bts or "—",
             "partition_promoted": partition_promoted,
         })

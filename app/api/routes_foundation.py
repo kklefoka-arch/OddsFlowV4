@@ -66,13 +66,16 @@ async def foundation_json() -> dict:
     finally:
         conn.close()
 
-    data = compute_foundation(rows)
+    data = compute_foundation(rows)  # cells now carry df (3-key partition)
     live_keys = set(V3_ACTIVE.keys())
     promoted_count = 0
     for section in ("all", "t1", "t2t3"):
         for cell in data.get(section, []) or []:
-            key = (cell["zone"], cell["bts_pocket"])
-            cell["partition_key"] = f"{key[0]}:{key[1]}"
+            zone = cell["zone"]
+            bts = cell["bts_pocket"]
+            df = cell.get("df", "")
+            key = (zone, df, bts)
+            cell["partition_key"] = f"{zone}:{df}:{bts}" if df else f"{zone}:{bts}"
             cell["cell_promoted"] = key in live_keys
             if section == "all" and cell["cell_promoted"]:
                 promoted_count += 1

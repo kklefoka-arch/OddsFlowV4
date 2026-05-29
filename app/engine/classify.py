@@ -1,6 +1,11 @@
 """OddsFlow V4 — Fixture classification.
 
-Maps draw_odd → draw_zone and (btts_yes_odd, btts_no_odd) → bts_pocket.
+Maps draw_odd → draw_zone, (btts_yes_odd, btts_no_odd) → bts_pocket,
+and (home_odd, away_odd) → DF bucket.
+
+Session 23c (2026-05-29) — Durable Rule 1 overridden by operator decision.
+DF re-introduced as a partition axis. The partition is now 3-key
+``(zone, df, bts_pocket)``. No Wilson, no EV anywhere in this module.
 """
 
 from __future__ import annotations
@@ -71,19 +76,40 @@ def bts_of(yes_odd: float | None, no_odd: float | None) -> str | None:
         return "strong_under" if no_odd < 1.50 else "slight_under"
 
 
-def classify_fixture(row: dict) -> dict:
-    """Derive zone, bts_pocket, and tier from a fixture dict.
+def df_of(home_odd: float | None, away_odd: float | None) -> str | None:
+    """Classify the home/away odds spread into a DF bucket.
 
-    Reads keys: draw_odd, btts_yes_odd, btts_no_odd, tier.
+    DF = |round(home_odd) - round(away_odd)|, bucketed:
+        DF0  diff == 0  (very even)
+        DF1  diff == 1  (mild edge)
+        DF2  diff >= 2  (clear edge)
+
+    Returns None if either odd is missing.
+    """
+    if home_odd is None or away_odd is None:
+        return None
+    diff = abs(round(home_odd) - round(away_odd))
+    if diff == 0:
+        return "DF0"
+    if diff == 1:
+        return "DF1"
+    return "DF2"
+
+
+def classify_fixture(row: dict) -> dict:
+    """Derive zone, df, bts_pocket, and tier from a fixture dict.
+
+    Reads keys: draw_odd, home_odd, away_odd, btts_yes_odd, btts_no_odd, tier.
 
     Args:
         row: Mapping containing fixture odds and tier fields.
 
     Returns:
-        Dict with keys ``zone``, ``bts_pocket``, ``tier``.
+        Dict with keys ``zone``, ``df``, ``bts_pocket``, ``tier``.
     """
     return {
         "zone": zone_of(row.get("draw_odd")),
+        "df": df_of(row.get("home_odd"), row.get("away_odd")),
         "bts_pocket": bts_of(row.get("btts_yes_odd"), row.get("btts_no_odd")),
         "tier": row.get("tier"),
     }

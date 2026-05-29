@@ -114,10 +114,12 @@ def make_pick_uuid(fixture_id: int, market: str, pick: str) -> str:
     return hashlib.sha256(f"{fixture_id}:{market}:{pick}".encode()).hexdigest()[:36]
 
 
-def _compute_cell_drift(conn: sqlite3.Connection, zone: str, bts: str,
+def _compute_cell_drift(conn: sqlite3.Connection, zone: str, df: str, bts: str,
                          market: str, historical_pct: float,
                          recent_days: int = 30) -> dict[str, Any]:
     cutoff = (datetime.now(tz=timezone.utc) - timedelta(days=recent_days)).strftime("%Y-%m-%d %H:%M:%S")
+    # 3-key filter (V3.2). em.df_level may be NULL for legacy V3 rows; the
+    # df condition matches the live partition.
     rows = conn.execute(
         """
         SELECT em.market, em.pick,
@@ -126,12 +128,12 @@ def _compute_cell_drift(conn: sqlite3.Connection, zone: str, bts: str,
         FROM emit_log em
         JOIN fixtures f ON f.id = em.fixture_id
         LEFT JOIN fixture_stats fs ON fs.fixture_id = f.id
-        WHERE em.zone = ? AND em.bts_pocket = ? AND em.market = ?
+        WHERE em.zone = ? AND em.df_level = ? AND em.bts_pocket = ? AND em.market = ?
           AND em.emitted_at >= ?
           AND f.home_score IS NOT NULL AND f.away_score IS NOT NULL
           AND f.home_odd IS NOT NULL AND f.away_odd IS NOT NULL
         """,
-        (zone, bts, market, cutoff),
+        (zone, df, bts, market, cutoff),
     ).fetchall()
 
     # V3 non-loss hit rate (matches static_policy baseline convention — voids
@@ -185,21 +187,21 @@ def write_emit_log(conn: sqlite3.Connection, emit_rows: list[dict]) -> dict[str,
             """,
             (p["fixture_id"], p["market"], uuid),
         )
-        # df_level column kept on emit_log (additive from V3.1, harmless).
-        # Session 19 (V3 restoration) writes NULL — DF is no longer a partition
-        # axis; left in the schema to preserve historical rows.
+        # df_level column populated from V3.2 partition (Session 23c — Rule 1
+        # overridden). Historic rows kept NULL; new emits store DF0/DF1/DF2.
         result = conn.execute(
             """
             INSERT OR IGNORE INTO emit_log
               (pick_uuid, emitted_at, fixture_id, zone, df_level, bts_pocket, tier,
                market, pick, pick_odd, confidence)
-            VALUES (?, ?, ?, ?, NULL, ?, ?, ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 uuid,
                 now_sql,
                 p["fixture_id"],
                 p["zone"],
+                p.get("df"),
                 p["bts_pocket"],
                 p.get("tier"),
                 p["market"],
@@ -260,7 +262,7 @@ def picks(days: int = Query(3, ge=1, le=14)) -> dict[str, Any]:
             (today, horizon),
         ).fetchall()
 
-        drift_cache: dict[tuple[str, str, str], dict[str, Any]] = {}
+        drift_cache: dict[tuple[str, str, str, str], dict[str, Any]] = {}
         picks_out: list[dict[str, Any]] = []
         emit_rows: list[dict[str, Any]] = []
         # skip_reasons keeps the legacy "unclassifiable" total for back-compat
@@ -272,6 +274,7 @@ def picks(days: int = Query(3, ge=1, le=14)) -> dict[str, Any]:
             "no_draw_odd":            0,
             "draw_under_290":         0,
             "no_bts_odds":            0,
+            "no_ha_odds":             0,
             "partition_not_promoted": 0,
         }
 
@@ -280,8 +283,9 @@ def picks(days: int = Query(3, ge=1, le=14)) -> dict[str, Any]:
             clf = classify_fixture(d)
             zone = clf.get("zone")
             bts  = clf.get("bts_pocket")
+            df   = clf.get("df")
 
-            if zone is None or bts is None:
+            if zone is None or bts is None or df is None:
                 skip_reasons["unclassifiable"] += 1
                 # Granular reasons so the picks tab can show why.
                 draw_odd = d.get("draw_odd")
@@ -291,9 +295,11 @@ def picks(days: int = Query(3, ge=1, le=14)) -> dict[str, Any]:
                     skip_reasons["draw_under_290"] += 1
                 if d.get("btts_yes_odd") is None or d.get("btts_no_odd") is None:
                     skip_reasons["no_bts_odds"] += 1
+                if d.get("home_odd") is None or d.get("away_odd") is None:
+                    skip_reasons["no_ha_odds"] += 1
                 continue
 
-            cell_markets = V3_ACTIVE.get((zone, bts))
+            cell_markets = V3_ACTIVE.get((zone, df, bts))
             if cell_markets is None:
                 skip_reasons["partition_not_promoted"] += 1
                 continue
@@ -307,11 +313,11 @@ def picks(days: int = Query(3, ge=1, le=14)) -> dict[str, Any]:
             emitted_any = False
 
             for market, mkt_cfg in cell_markets.items():
-                drift_key = (zone, bts, market)
+                drift_key = (zone, df, bts, market)
                 if drift_key not in drift_cache:
                     try:
                         drift_cache[drift_key] = _compute_cell_drift(
-                            conn, zone, bts, market, mkt_cfg["hit"]
+                            conn, zone, df, bts, market, mkt_cfg["hit"]
                         )
                     except Exception:
                         drift_cache[drift_key] = {
@@ -362,8 +368,9 @@ def picks(days: int = Query(3, ge=1, le=14)) -> dict[str, Any]:
                     "pick_odd":                 pick_odd,
                     "pick_odd_derived":         derived,
                     "pick_class":               "promote",
-                    "partition_key":            f"{zone}:{bts}",
+                    "partition_key":            f"{zone}:{df}:{bts}",
                     "draw_zone":                zone,
+                    "df":                       df,
                     "bts_pocket":               bts,
                     "cell_drift_flag":          drift["flag"],
                     "cell_drift_gap_pp":        drift["gap_pp"],
@@ -376,6 +383,7 @@ def picks(days: int = Query(3, ge=1, le=14)) -> dict[str, Any]:
                 emit_rows.append({
                     "fixture_id": d["id"],
                     "zone":       zone,
+                    "df":         df,
                     "bts_pocket": bts,
                     "tier":       tier,
                     "market":     market,

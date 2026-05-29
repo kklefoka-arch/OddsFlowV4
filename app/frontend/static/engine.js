@@ -511,10 +511,13 @@ function renderFoundationTable(wrap, cells) {
     return;
   }
   const ZONE_ORDER = ['strong', 'standard', 'low', 'one_sided'];
+  const DF_ORDER   = ['DF0', 'DF1', 'DF2', ''];
   const BTS_ORDER  = ['strong_over', 'slight_over', 'slight_under', 'strong_under'];
   const sorted = [...cells].sort((a, b) => {
     const zi = ZONE_ORDER.indexOf(a.zone) - ZONE_ORDER.indexOf(b.zone);
     if (zi !== 0) return zi;
+    const di = DF_ORDER.indexOf(a.df || '') - DF_ORDER.indexOf(b.df || '');
+    if (di !== 0) return di;
     return BTS_ORDER.indexOf(a.bts_pocket) - BTS_ORDER.indexOf(b.bts_pocket);
   });
 
@@ -523,7 +526,7 @@ function renderFoundationTable(wrap, cells) {
     let zoneHdr = '';
     if (cell.zone !== currentZone) {
       currentZone = cell.zone;
-      zoneHdr = `<tr class="fnd-zone-hdr"><td colspan="13">&#9632; ${cell.zone.toUpperCase().replace(/_/g, ' ')}</td></tr>`;
+      zoneHdr = `<tr class="fnd-zone-hdr"><td colspan="14">&#9632; ${cell.zone.toUpperCase().replace(/_/g, ' ')}</td></tr>`;
     }
     const drG = cell.goals_drop_rank
       ? `<span class="fnd-drop rank-${cell.goals_drop_rank}">▼${(cell.goals_1up_drop || 0).toFixed(1)}</span>`
@@ -539,6 +542,7 @@ function renderFoundationTable(wrap, cells) {
     return `${zoneHdr}
     <tr class="${promotedCls} ${lowCls}">
       <td class="fnd-zone">${cell.zone.replace(/_/g, ' ')}</td>
+      <td class="fnd-df">${cell.df || '—'}</td>
       <td class="fnd-bts">${cell.bts_pocket}</td>
       <td class="fnd-num">${cell.n_fixtures}</td>
       <td class="fnd-num muted">${cell.n_pct_of_zone.toFixed(1)}%</td>
@@ -560,6 +564,7 @@ function renderFoundationTable(wrap, cells) {
       <thead>
         <tr>
           <th>Zone</th>
+          <th>DF</th>
           <th>BTS Pocket</th>
           <th class="fnd-num">n</th>
           <th class="fnd-num">n% Zone</th>
@@ -772,12 +777,16 @@ function renderZoneMarket(rows) {
     el.innerHTML = '<div class="empty">No settled emits in window.</div>';
     return;
   }
+  // V3.2: rows are per (zone, df, market). Render DF column when present.
+  const hasDf = rows.some(r => r.df);
   const tr = rows.map(r => {
     const dCls = r.vs_baseline_pp == null ? '' :
       (r.vs_baseline_pp >= 2 ? 'positive' : (r.vs_baseline_pp <= -5 ? 'negative' : ''));
     const ignore = r.n < 5 ? ` <span class="muted">(n=${r.n} ignore)</span>` : '';
+    const dfCell = hasDf ? `<td>${r.df || '—'}</td>` : '';
     return `<tr>
       <td><strong>${r.zone}</strong></td>
+      ${dfCell}
       <td>${marketLabel(r.market)}</td>
       <td class="numeric">${r.n}${ignore}</td>
       <td class="numeric"><strong>${r.hit_rate != null ? r.hit_rate + '%' : '—'}</strong></td>
@@ -785,10 +794,11 @@ function renderZoneMarket(rows) {
       <td class="${dCls}">${r.vs_baseline_pp != null ? (r.vs_baseline_pp >= 0 ? '+' : '') + r.vs_baseline_pp + 'pp' : '—'}</td>
     </tr>`;
   }).join('');
+  const dfHeader = hasDf ? '<th>DF</th>' : '';
   el.innerHTML = `
     <table class="performance-table">
       <thead><tr>
-        <th>Zone</th><th>Market</th><th>n</th><th>Non-loss%</th><th>Baseline</th><th>Δ</th>
+        <th>Zone</th>${dfHeader}<th>Market</th><th>n</th><th>Non-loss%</th><th>Baseline</th><th>Δ</th>
       </tr></thead>
       <tbody>${tr}</tbody>
     </table>
@@ -999,10 +1009,11 @@ async function loadReportsEmitMarketBreakdown(days, tier) {
         </div>
       `;
       }).join('');
+      const dfPart = cell.df ? ` · <span class="muted">${cell.df}</span>` : '';
       return `
         <div class="market-bd-cell">
           <div class="market-bd-header">
-            <strong>${cell.zone}</strong> · ${cell.bts_v2}
+            <strong>${cell.zone}</strong>${dfPart} · ${cell.bts_v2}
             ${promoteChip}
           </div>
           <div class="market-bd-rows">${marketRows}</div>
@@ -1171,10 +1182,16 @@ function openInspector(picks) {
     <div id="inspector-similar-list"><div class="muted">Loading similar-odds history…</div></div>
   `;
   if (p0.partition_key) {
-    // V3 partition_key is 2-part "zone:bts" (DF removed in Session 19 restore).
+    // V3.2 partition_key is 3-part "zone:df:bts" (Session 23c — Rule 1 overridden).
+    // Fall back to 2-part for legacy emit_log rows where df_level is NULL.
     const parts = p0.partition_key.split(':');
-    const [zone, bts] = parts.length >= 3 ? [parts[0], parts[2]] : parts;
-    if (zone && bts) loadInspectorSimilar(zone, bts);
+    if (parts.length >= 3) {
+      const [zone, df, bts] = parts;
+      if (zone && bts && df) loadInspectorSimilar(zone, bts, df);
+    } else {
+      const [zone, bts] = parts;
+      if (zone && bts) loadInspectorSimilar(zone, bts, null);
+    }
   }
 }
 
@@ -1364,13 +1381,15 @@ function stopLivePolling() {
 }
 
 // ---- Inspector similar-odds ----
-async function loadInspectorSimilar(zone, bts) {
+async function loadInspectorSimilar(zone, bts, df) {
   const el = document.getElementById('inspector-similar-list');
   const cellEl = document.getElementById('inspector-similar-cell');
   if (!el) return;
-  if (cellEl) cellEl.textContent = `${zone} · ${bts}`;
+  if (cellEl) cellEl.textContent = df ? `${zone} · ${df} · ${bts}` : `${zone} · ${bts}`;
   try {
-    const r    = await fetch(`/inspector/similar?zone=${encodeURIComponent(zone)}&bts=${encodeURIComponent(bts)}&limit=30`);
+    let url = `/inspector/similar?zone=${encodeURIComponent(zone)}&bts=${encodeURIComponent(bts)}&limit=30`;
+    if (df) url += `&df=${encodeURIComponent(df)}`;
+    const r    = await fetch(url);
     const body = await r.json();
     if (body.error || !body.fixtures || body.fixtures.length === 0) {
       el.innerHTML = '<div class="muted">No historical data for this cell yet (draw_zone migration may not have run).</div>';

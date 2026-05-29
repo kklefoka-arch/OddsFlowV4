@@ -47,14 +47,11 @@ def _drift_flag(gap_pp: float | None, recent_n: int, min_n: int = DRIFT_MIN_N) -
     return "stable"
 
 
-def _get_live_promoted(conn: sqlite3.Connection) -> dict[tuple[str, str], dict[str, Any]]:
-    """Return the V3 promoted cell set (stone policy, 2-key).
+def _get_live_promoted(conn: sqlite3.Connection) -> dict[tuple[str, str, str], dict[str, Any]]:
+    """Return the V3.2 promoted cell set (stone policy, 3-key).
 
-    Uses PROMOTED_CELLS directly — the authoritative policy the engine fires
-    from. Fixes M4 (Session 15 process audit): the prior live-foundation
-    re-derivation required a large settled sample per cell to promote,
-    leaving drift reports nearly empty under normal operation. The conn
-    parameter is retained for backward compatibility but no longer consulted.
+    Session 23c — Durable Rule 1 overridden. Partition is now
+    ``(zone, df, bts_pocket)`` 3-tuple. Uses PROMOTED_CELLS directly.
     """
     return dict(PROMOTED_CELLS)
 
@@ -65,13 +62,13 @@ def compute_drift_rows(
     recent_days: int = 30,
     min_sample_n: int = DRIFT_MIN_N,
 ) -> list[dict[str, Any]]:
-    """Drift for each live-promoted cell: live-foundation historical hit vs recent emit_log."""
+    """Drift per live-promoted cell: historical hit vs recent emit_log (3-key)."""
     live_promoted = _get_live_promoted(conn)
     cutoff = (datetime.now(tz=timezone.utc) - timedelta(days=recent_days)).strftime("%Y-%m-%d %H:%M:%S")
 
     recent_rows = conn.execute(
         """
-        SELECT em.zone, em.bts_pocket, em.market, em.pick,
+        SELECT em.zone, em.df_level, em.bts_pocket, em.market, em.pick,
                f.home_score, f.away_score, f.home_odd, f.away_odd,
                fs.total_corners
         FROM emit_log em
@@ -83,11 +80,14 @@ def compute_drift_rows(
         (cutoff,),
     ).fetchall()
 
-    # V3 non-loss hit rate (voids count as 1, matches V3 baseline).
-    # corners_nl needs total_corners from fixture_stats join.
-    recent: dict[tuple[str, str], dict[str, int]] = {}
+    # V3 non-loss hit rate (voids count as 1). corners_nl needs total_corners.
+    # Legacy V3 rows have em.df_level=NULL; they are skipped (not poisoning the
+    # drift comparison for the V3.2 partition).
+    recent: dict[tuple[str, str, str], dict[str, int]] = {}
     for r in recent_rows:
-        key = (r["zone"], r["bts_pocket"])
+        if r["df_level"] is None:
+            continue
+        key = (r["zone"], r["df_level"], r["bts_pocket"])
         if key not in live_promoted:
             continue
         h = is_hit(settle_pick(r["market"], r["home_score"], r["away_score"],
@@ -101,18 +101,19 @@ def compute_drift_rows(
         recent[key]["n"] += 1
 
     rows: list[dict[str, Any]] = []
-    for (zone, bts), cell in sorted(live_promoted.items()):
+    for (zone, df, bts), cell in sorted(live_promoted.items()):
         hist_pct = cell["threeway_hit"]
         hist_n = cell.get("n_fixtures", cell.get("n", 0))
-        rec = recent.get((zone, bts), {"hits": 0, "n": 0})
+        rec = recent.get((zone, df, bts), {"hits": 0, "n": 0})
         r_n = rec["n"]
         r_hit = round(rec["hits"] / r_n * 100, 1) if r_n > 0 else None
         gap_pp = round(r_hit - hist_pct, 1) if r_hit is not None else None
         flag = _drift_flag(gap_pp, r_n, min_sample_n)
         rows.append({
             "zone":           zone,
+            "df":             df,
             "bts_v2":         bts,
-            "partition_key":  f"{zone}:{bts}",
+            "partition_key":  f"{zone}:{df}:{bts}",
             "historical_n":   hist_n,
             "historical_hit": hist_pct,
             "recent_n":       r_n,
@@ -166,7 +167,7 @@ def recent_settled(
             """
             SELECT pr.pick_uuid, pr.settled_at, pr.outcome, pr.actual_value,
                    em.fixture_id, em.market, em.pick, em.pick_odd,
-                   em.zone AS em_zone, em.bts_pocket AS em_bts,
+                   em.zone AS em_zone, em.df_level AS em_df, em.bts_pocket AS em_bts,
                    f.date AS kickoff_utc, f.home_score, f.away_score,
                    lg.name AS league_name, lg.country, lg.tier,
                    th.name AS home_team, ta.name AS away_team
@@ -188,7 +189,11 @@ def recent_settled(
     for r in rows:
         fx_id = r["fixture_id"]
         em_zone = r["em_zone"]; em_bts = r["em_bts"]
-        pk = f"{em_zone}:{em_bts}" if (em_zone and em_bts) else None
+        em_df = r["em_df"] if "em_df" in r.keys() else None
+        if em_df:
+            pk = f"{em_zone}:{em_df}:{em_bts}" if (em_zone and em_bts) else None
+        else:
+            pk = f"{em_zone}:{em_bts}" if (em_zone and em_bts) else None
         fx = fixtures_by_id.setdefault(fx_id, {
             "fixture_id":    fx_id,
             "kickoff_utc":   r["kickoff_utc"],
@@ -245,11 +250,13 @@ def recent_settled(
 @router.get("/similar")
 def similar(
     zone: str | None = Query(None),
-    bts: str | None = Query(None),
+    df:   str | None = Query(None),
+    bts:  str | None = Query(None),
     fixture_id: int | None = Query(None),
     limit: int = Query(50, ge=5, le=200),
 ) -> dict[str, Any]:
-    """Historical settled fixtures in the same (zone, bts) cell. Pre-match context."""
+    """Historical settled fixtures in the same (zone, df, bts) cell — V3.2 3-key."""
+    from app.engine.classify import df_of
     conn = get_conn(settings.sqlite_path)
     try:
         if fixture_id is not None:
@@ -260,10 +267,13 @@ def similar(
             if fx:
                 zone = zone_of(fx["draw_odd"])
                 bts  = bts_of(fx["btts_yes_odd"], fx["btts_no_odd"])
+                df   = df_of(fx["home_odd"], fx["away_odd"])
 
-        if not zone or not bts:
-            return {"error": "zone and bts required (or a valid fixture_id)", "fixtures": []}
+        if not zone or not bts or not df:
+            return {"error": "zone, df, and bts required (or a valid fixture_id)", "fixtures": []}
 
+        # Similar fixtures: same (zone, bts) at the column level, df re-derived
+        # from each candidate fixture's home/away odds.
         rows = conn.execute("""
             SELECT f.id, f.date, f.home_team_name, f.away_team_name,
                    f.home_score, f.away_score, f.home_odd, f.away_odd, f.draw_odd,
@@ -278,7 +288,9 @@ def similar(
               AND f.bts_pocket = ?
             ORDER BY f.date DESC
             LIMIT ?
-        """, (zone, bts, limit)).fetchall()
+        """, (zone, bts, limit * 3)).fetchall()
+        # Filter by DF in Python (df_of is not a SQL function).
+        rows = [r for r in rows if df_of(r["home_odd"], r["away_odd"]) == df][:limit]
     finally:
         conn.close()
 
@@ -322,8 +334,9 @@ def similar(
     hit_rate = round(green / total * 100, 1) if total else None
     return {
         "zone":          zone,
+        "df":            df,
         "bts_pocket":    bts,
-        "partition_key": f"{zone}:{bts}",
+        "partition_key": f"{zone}:{df}:{bts}",
         "threeway_pick": "DNB (Alpha Win or Draw)" if zone in ("strong", "standard", "low") else "Alpha Win",
         "sample_n":      total,
         "threeway_hit":  hit_rate,
