@@ -63,6 +63,31 @@ Register-OddsFlowTask "OddsFlow_Settle_SA"       "settle.py"          3  15
 Register-OddsFlowTask "OddsFlow_FetchResults_DawnSA" "fetch_results.py"  6  0
 Register-OddsFlowTask "OddsFlow_Settle_DawnSA"       "settle.py"          6 15
 
+# Nightly orphan reconciler (Session 23d Bundle 4)
+# Marks picks that cannot be settled (dropped league, or stale > 48h) as
+# outcome='ORPHAN' so they leave the "pending" count. Runs after the dawn
+# SA settle pass so it sees a fully-up-to-date settlement view.
+Register-OddsFlowTask "OddsFlow_ReconcileOrphans" "scripts/reconcile_orphans.py" 6 30
+
+# Weekly DB maintenance (Session 23d Bundle 6)
+# PRAGMA optimize + ANALYZE + conditional VACUUM with dated backup.
+# Sundays 02:00 SAST — between Settle (Sat 23:45) and the SA fetch (Sun 03:00)
+# so nothing else is writing during the VACUUM. Uses a weekly trigger rather
+# than the daily helper above.
+$dbmaintAction    = New-ScheduledTaskAction -Execute $python `
+                       -Argument "scripts/db_maintenance.py" `
+                       -WorkingDirectory $workdir
+$dbmaintTrigger   = New-ScheduledTaskTrigger -Weekly -DaysOfWeek Sunday -At "02:00"
+$dbmaintSettings  = New-ScheduledTaskSettingsSet `
+                       -ExecutionTimeLimit (New-TimeSpan -Minutes 30) `
+                       -StartWhenAvailable
+$dbmaintPrincipal = New-ScheduledTaskPrincipal -UserId "$env:USERDOMAIN\$env:USERNAME" `
+                                                 -LogonType S4U -RunLevel Highest
+Register-ScheduledTask -TaskName "OddsFlow_DBMaintenance" -Action $dbmaintAction `
+                       -Trigger $dbmaintTrigger -Settings $dbmaintSettings `
+                       -Principal $dbmaintPrincipal -Force
+Write-Host "Registered: OddsFlow_DBMaintenance  (weekly Sunday 02:00)" -ForegroundColor Green
+
 # Ngrok — startup task, restarts on failure, keeps the tunnel alive
 # (PS 5.1 compatible — replaces null-conditional `?.` which is PS 7+ only)
 $ngrokCmd = Get-Command ngrok -ErrorAction SilentlyContinue
@@ -101,7 +126,7 @@ Register-ScheduledTask -TaskName "OddsFlow_Server" -Action $uvicornAction -Trigg
 Write-Host "Registered: OddsFlow_Server  (startup, restarts on failure)" -ForegroundColor Green
 
 Write-Host ""
-Write-Host "All 12 tasks registered." -ForegroundColor Cyan
+Write-Host "All 14 tasks registered." -ForegroundColor Cyan
 Write-Host "Verify in Task Scheduler: taskschd.msc -> Task Scheduler Library"
 Write-Host ""
 Write-Host "Times are LOCAL (SAST = UTC+2). Adjust if your clock differs."
