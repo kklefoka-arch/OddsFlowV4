@@ -45,7 +45,8 @@ ACTIVE_LEAGUES = {
     # T3
     1642: 3,   # Argentina — Reserve League
     351:  3,   # Iceland — 2. Deild
-    797:  3,   # United States — USL League Two
+    # 797 (USA — USL League Two) removed 2026-05-29 — operator dropped from
+    # Sportmonks subscription. 2,656 historical fixtures stay in DB.
     1607: 3,   # United States — USL League One
     2545: 3,   # United States — MLS Next Pro
     1098: 3,   # Bolivia — Liga De Futbol Prof

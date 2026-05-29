@@ -1,6 +1,6 @@
 """OddsFlow V4 — Foundation Matrix routes.
 
-Hit rates per (zone × DF × BTS pocket) cell — V3.1 partition shape.
+Hit rates per (zone × BTS pocket) cell — V3 partition shape (Session 19 restored).
 """
 
 from __future__ import annotations
@@ -44,6 +44,10 @@ async def foundation_page(request: Request) -> HTMLResponse:
 async def foundation_json() -> dict:
     """Return the full Foundation Matrix as JSON.
 
+    Each cell carries an explicit ``partition_key`` field (``"<zone>:<bts>"``)
+    so downstream tools can key off the same string the rest of the API uses
+    (inspector drift, reports, picks).
+
     Returns:
         Dict with keys ``all``, ``t1``, ``t2t3``, and ``summary``.
     """
@@ -53,4 +57,8 @@ async def foundation_json() -> dict:
     finally:
         conn.close()
 
-    return compute_foundation(rows)
+    data = compute_foundation(rows)
+    for section in ("all", "t1", "t2t3"):
+        for cell in data.get(section, []) or []:
+            cell["partition_key"] = f"{cell['zone']}:{cell['bts_pocket']}"
+    return data

@@ -332,7 +332,17 @@ def emit_market_breakdown(
     days: int = Query(30, ge=1, le=365),
     tier: str | None = Query(None),
 ) -> dict[str, Any]:
-    """Per-(zone, bts, market, pick) hit rates across recent emits."""
+    """Per-cell market breakdown + per-market roll-ups (Durable Rule 5).
+
+    Response keys:
+      - cells[]: per (zone, bts) cell, with markets[] aggregated by market
+        (not by pick) so DNB and alpha_win — where every fixture has a unique
+        team-name pick — roll up to a single market row instead of n=1 per team.
+      - markets_summary[]: per-market totals across all cells (image 2 Table A).
+        Includes vs-baseline delta against V3_MARKETS historical hit rates.
+      - zone_market_summary[]: per (zone, market) totals (image 2 Table B).
+      - pending_breakdown[]: per-market pending counts, split played vs upcoming.
+    """
     cutoff = datetime.now(tz=timezone.utc) - timedelta(days=days)
     tier_clause, tier_params = _tier_where_clause(tier)
 
@@ -352,17 +362,29 @@ def emit_market_breakdown(
             """,
             [cutoff.strftime("%Y-%m-%d %H:%M:%S"), *tier_params],
         ).fetchall()
-        # V3 stone policy directly (the authoritative promotion set the engine
-        # actually fires from). Fixes M4 (Session 15 process audit) — the
-        # live-foundation approach required ~50+ settled picks per cell to
-        # promote, so with current sample sizes every cell showed
-        # `is_promoted=false` even though they were firing.
-        from app.engine.static_policy import V3_ACTIVE
+        # Pending counts: per-market, split played vs upcoming.
+        pending_rows = conn.execute(
+            f"""
+            SELECT em.market,
+                   CASE WHEN f.home_score IS NULL THEN 'upcoming' ELSE 'played' END AS state,
+                   COUNT(*) AS n
+            FROM emit_log em
+            JOIN fixtures f ON f.id = em.fixture_id
+            LEFT JOIN pick_results pr ON pr.pick_uuid = em.pick_uuid
+            LEFT JOIN leagues lg ON lg.id = f.league_id
+            WHERE em.emitted_at >= ?{tier_clause}
+              AND pr.pick_uuid IS NULL
+            GROUP BY em.market, state
+            """,
+            [cutoff.strftime("%Y-%m-%d %H:%M:%S"), *tier_params],
+        ).fetchall()
+        from app.engine.static_policy import V3_ACTIVE, V3_MARKETS
         live_promoted_keys: set[tuple[str, str]] = set(V3_ACTIVE.keys())
     finally:
         conn.close()
 
-    buckets: dict[tuple[str, str, str, str], list[float]] = {}
+    # Bucket settled outcomes by (zone, bts, market) — aggregate across picks.
+    buckets: dict[tuple[str, str, str], list[float]] = {}
     for r in rows:
         zone = zone_of(r["draw_odd"])
         bts = bts_of(r["btts_yes_odd"], r["btts_no_odd"])
@@ -373,16 +395,20 @@ def emit_market_breakdown(
                                total_corners=r["total_corners"])
         if outcome is None:
             continue
-        key = (zone, bts, r["market"], r["pick"])
+        key = (zone, bts, r["market"])
         buckets.setdefault(key, []).append(outcome)
 
     cells: dict[tuple[str, str], dict[str, Any]] = {}
-    for (zone, bts, market, pick), outs in sorted(buckets.items()):
+    markets_summary: dict[str, dict[str, int]] = {}
+    zone_market_summary: dict[tuple[str, str], dict[str, int]] = {}
+    for (zone, bts, market), outs in sorted(buckets.items()):
         wins = sum(1 for o in outs if o == 1.0)
         voids = sum(1 for o in outs if o == 0.5)
         n = len(outs)
+        losses = n - wins - voids
         # V3 non-loss hit rate — voids count as wins (matches static_policy).
-        hit_rate = (wins + voids) / n if n > 0 else None
+        non_loss = (wins + voids) / n if n > 0 else None
+        win_only = wins / n if n > 0 else None
         cell = cells.setdefault((zone, bts), {
             "zone": zone,
             "bts_v2": bts,
@@ -392,19 +418,96 @@ def emit_market_breakdown(
         })
         cell["markets"].append({
             "market":   market,
-            "pick":     pick,
             "n":        n,
             "wins":     wins,
             "voids":    voids,
-            "losses":   n - wins - voids,
-            "hit_rate": round(hit_rate * 100, 1) if hit_rate is not None else None,
+            "losses":   losses,
+            "hit_rate": round(non_loss * 100, 1) if non_loss is not None else None,
+            "win_rate": round(win_only * 100, 1) if win_only is not None else None,
+        })
+        ms = markets_summary.setdefault(market, {"n": 0, "wins": 0, "voids": 0, "losses": 0})
+        ms["n"] += n; ms["wins"] += wins; ms["voids"] += voids; ms["losses"] += losses
+        zk = (zone, market)
+        zm = zone_market_summary.setdefault(zk, {"n": 0, "wins": 0, "voids": 0, "losses": 0})
+        zm["n"] += n; zm["wins"] += wins; zm["voids"] += voids; zm["losses"] += losses
+
+    # markets_summary[] — per-market totals + vs-baseline delta.
+    # Baseline = simple mean of V3_MARKETS hit rates across cells that emit
+    # this market (matches the operator's pre-overlay "vs baseline" intuition).
+    market_baselines: dict[str, list[float]] = {}
+    for cell_cfg in V3_MARKETS.values():
+        for m, mcfg in cell_cfg.items():
+            market_baselines.setdefault(m, []).append(mcfg["hit"])
+    markets_summary_out = []
+    for m, agg in sorted(markets_summary.items()):
+        n = agg["n"]
+        non_loss = round(100 * (agg["wins"] + agg["voids"]) / n, 1) if n else None
+        win_only = round(100 * agg["wins"] / n, 1) if n else None
+        baseline_list = market_baselines.get(m, [])
+        baseline = round(sum(baseline_list) / len(baseline_list), 1) if baseline_list else None
+        delta_pp = round(non_loss - baseline, 1) if (non_loss is not None and baseline is not None) else None
+        markets_summary_out.append({
+            "market":           m,
+            "n":                n,
+            "wins":             agg["wins"],
+            "voids":            agg["voids"],
+            "losses":           agg["losses"],
+            "win_rate":         win_only,
+            "hit_rate":         non_loss,
+            "baseline_hit":     baseline,
+            "vs_baseline_pp":   delta_pp,
+        })
+
+    # zone_market_summary[] — per (zone, market) roll-up.
+    zone_market_out = []
+    for (zone, market), agg in sorted(zone_market_summary.items()):
+        n = agg["n"]
+        non_loss = round(100 * (agg["wins"] + agg["voids"]) / n, 1) if n else None
+        # baseline = mean of V3_MARKETS[market] across cells in this zone
+        cell_baselines = [
+            mcfg["hit"]
+            for (z, b), cell_cfg in V3_MARKETS.items()
+            if z == zone
+            for m, mcfg in cell_cfg.items()
+            if m == market
+        ]
+        baseline = round(sum(cell_baselines) / len(cell_baselines), 1) if cell_baselines else None
+        delta_pp = round(non_loss - baseline, 1) if (non_loss is not None and baseline is not None) else None
+        zone_market_out.append({
+            "zone":             zone,
+            "market":           market,
+            "n":                n,
+            "wins":             agg["wins"],
+            "voids":            agg["voids"],
+            "losses":           agg["losses"],
+            "hit_rate":         non_loss,
+            "baseline_hit":     baseline,
+            "vs_baseline_pp":   delta_pp,
+        })
+
+    # pending_breakdown[] — per-market, played vs upcoming.
+    pending_map: dict[str, dict[str, int]] = {}
+    for r in pending_rows:
+        slot = pending_map.setdefault(r["market"], {"played": 0, "upcoming": 0})
+        slot[r["state"]] = r["n"]
+    pending_out = []
+    for market in sorted(pending_map.keys()):
+        slot = pending_map[market]
+        pending_out.append({
+            "market":   market,
+            "played":   slot.get("played", 0),
+            "upcoming": slot.get("upcoming", 0),
+            "total":    slot.get("played", 0) + slot.get("upcoming", 0),
         })
 
     return {
-        "as_of":       datetime.now(tz=timezone.utc).isoformat(),
-        "window_days": days,
-        "tier":        tier,
-        "cells":       list(cells.values()),
+        "as_of":               datetime.now(tz=timezone.utc).isoformat(),
+        "window_days":         days,
+        "tier":                tier,
+        "cells":               list(cells.values()),
+        "markets_summary":     markets_summary_out,
+        "zone_market_summary": zone_market_out,
+        "pending_breakdown":   pending_out,
     }
 
 

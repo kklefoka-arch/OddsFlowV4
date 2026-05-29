@@ -263,7 +263,17 @@ def picks(days: int = Query(3, ge=1, le=14)) -> dict[str, Any]:
         drift_cache: dict[tuple[str, str, str], dict[str, Any]] = {}
         picks_out: list[dict[str, Any]] = []
         emit_rows: list[dict[str, Any]] = []
-        skip_reasons = {"unclassifiable": 0, "partition_not_promoted": 0}
+        # skip_reasons keeps the legacy "unclassifiable" total for back-compat
+        # with the SPA, and adds the operator-requested breakdown so the picks
+        # tab can distinguish missing draw_odd from missing BTS odds from the
+        # both_sided exclusion (draw_odd < 2.90).
+        skip_reasons = {
+            "unclassifiable":         0,
+            "no_draw_odd":            0,
+            "draw_under_290":         0,
+            "no_bts_odds":            0,
+            "partition_not_promoted": 0,
+        }
 
         for row in rows:
             d = dict(row)
@@ -273,6 +283,14 @@ def picks(days: int = Query(3, ge=1, le=14)) -> dict[str, Any]:
 
             if zone is None or bts is None:
                 skip_reasons["unclassifiable"] += 1
+                # Granular reasons so the picks tab can show why.
+                draw_odd = d.get("draw_odd")
+                if draw_odd is None:
+                    skip_reasons["no_draw_odd"] += 1
+                elif draw_odd < 2.90:
+                    skip_reasons["draw_under_290"] += 1
+                if d.get("btts_yes_odd") is None or d.get("btts_no_odd") is None:
+                    skip_reasons["no_bts_odds"] += 1
                 continue
 
             cell_markets = V3_ACTIVE.get((zone, bts))
@@ -377,8 +395,13 @@ def picks(days: int = Query(3, ge=1, le=14)) -> dict[str, Any]:
 
     fixture_ids = {p["fixture_id"] for p in picks_out}
     counts_by_market: dict[str, int] = {}
+    counts_by_tier: dict[str, int] = {}
     for p in picks_out:
         counts_by_market[p["market"]] = counts_by_market.get(p["market"], 0) + 1
+        # Tier label: int → "1"/"2"/"3", None → "untiered" (matches Reports tier filter).
+        t = p.get("tier")
+        tier_key = str(t) if t in (1, 2, 3) else "untiered"
+        counts_by_tier[tier_key] = counts_by_tier.get(tier_key, 0) + 1
 
     return {
         "count":            len(picks_out),
@@ -386,7 +409,7 @@ def picks(days: int = Query(3, ge=1, le=14)) -> dict[str, Any]:
         "counts_by_class":  {"promote": len(picks_out)},
         "counts_by_market": counts_by_market,
         "counts_by_leg":    {"single": len(picks_out)},
-        "counts_by_tier":   {},
+        "counts_by_tier":   counts_by_tier,
         "window_days":      days,
         "as_of":            now.isoformat(),
         "skip_reasons":     skip_reasons,

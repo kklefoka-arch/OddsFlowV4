@@ -148,7 +148,19 @@
     <h3 class="section-h">Multi-window performance</h3>
     <div id="reports-emit-performance"></div>
 
-    <h3 class="section-h">Per-market hit rates</h3>
+    <h3 class="section-h">Per-market summary <span class="muted" style="font-size:0.8em">— Durable Rule 5 (not blended)</span></h3>
+    <p class="muted">Each market's settled total + vs-baseline (V3_MARKETS pre-overlay reference).</p>
+    <div id="reports-markets-summary"></div>
+
+    <h3 class="section-h">Zone &times; market</h3>
+    <p class="muted">Structural per-zone signal — which zones drive which markets.</p>
+    <div id="reports-zone-market"></div>
+
+    <h3 class="section-h">Pending breakdown</h3>
+    <p class="muted">Per-market unsettled split: <strong>upcoming</strong> = fixture not yet played (normal); <strong>played</strong> = settlement gap (corner stats missing, refresh_stats backlog).</p>
+    <div id="reports-pending-breakdown"></div>
+
+    <h3 class="section-h">Per-cell market hit rates</h3>
     <div id="reports-emit-market-breakdown"></div>
 
     <h3 class="section-h">Recent fixtures — per-pick readback</h3>

@@ -232,6 +232,24 @@ async function loadPicks() {
 function renderPicksSummary(el, body) {
   const sk = body.skip_reasons || {};
   const cm = body.counts_by_market || {};
+  const ct = body.counts_by_tier || {};
+  // Granular unclassifiable breakdown — falls back to legacy total if the
+  // route hasn't shipped the granular keys yet.
+  const noDraw    = sk.no_draw_odd    || 0;
+  const drawLow   = sk.draw_under_290 || 0;
+  const noBts     = sk.no_bts_odds    || 0;
+  const unclTotal = sk.unclassifiable || 0;
+  const unclTip   = (noDraw || drawLow || noBts)
+    ? `no draw: ${noDraw} · draw<2.90: ${drawLow} · no BTS: ${noBts}` : '';
+  // Per-tier display: only render rows where we have a count, plus an
+  // "untiered" row when the underlying league hasn't been classified.
+  const tierItems = ['1','2','3','untiered']
+    .filter(k => ct[k])
+    .map(k => `
+      <div class="summary-item">
+        <span class="summary-label">T${k === 'untiered' ? '–' : k}</span>
+        <span class="summary-value">${ct[k]}</span>
+      </div>`).join('');
   el.innerHTML = `
     <div class="summary-item">
       <span class="summary-label">Fixtures emitted</span>
@@ -258,8 +276,13 @@ function renderPicksSummary(el, body) {
       <span class="summary-value">${cm.goals_nl || 0}</span>
     </div>
     <div class="summary-item">
+      <span class="summary-label">Corners NL</span>
+      <span class="summary-value">${cm.corners_nl || 0}</span>
+    </div>
+    ${tierItems}
+    <div class="summary-item" ${unclTip ? `title="${unclTip}"` : ''}>
       <span class="summary-label">Unclassifiable</span>
-      <span class="summary-value">${sk.unclassifiable || 0}</span>
+      <span class="summary-value">${unclTotal}${unclTip ? ` <span class="muted" style="font-size:0.7em">(${unclTip})</span>` : ''}</span>
     </div>
     <div class="summary-item">
       <span class="summary-label">Not promoted</span>
@@ -703,9 +726,98 @@ async function loadReports() {
   await Promise.all([
     loadReportsSettleActivity(days),
     loadReportsEmitPerformance(tier),
-    loadReportsEmitMarketBreakdown(days, tier),
+    loadReportsEmitMarketBreakdown(days, tier),   // also drives markets-summary, zone-market, pending
     loadReportsEmitRecent(days, tier),
   ]);
+}
+
+function renderMarketsSummary(rows) {
+  const el = document.getElementById('reports-markets-summary');
+  if (!rows || rows.length === 0) {
+    el.innerHTML = '<div class="empty">No settled emits in window.</div>';
+    return;
+  }
+  const tr = rows.map(r => {
+    const dCls = r.vs_baseline_pp == null ? '' :
+      (r.vs_baseline_pp >= 2 ? 'positive' : (r.vs_baseline_pp <= -5 ? 'negative' : ''));
+    const dLabel = r.vs_baseline_pp == null ? '—' :
+      (r.vs_baseline_pp >= 2 ? `above (+${r.vs_baseline_pp}pp)` :
+       r.vs_baseline_pp <= -5 ? `under (${r.vs_baseline_pp}pp)` : `at (${r.vs_baseline_pp >= 0 ? '+' : ''}${r.vs_baseline_pp}pp)`);
+    return `<tr>
+      <td><strong>${marketLabel(r.market)}</strong></td>
+      <td class="numeric">${r.n}</td>
+      <td class="numeric positive">${r.wins}</td>
+      <td class="numeric negative">${r.losses}</td>
+      <td class="numeric">${r.voids}</td>
+      <td class="numeric">${r.win_rate != null ? r.win_rate + '%' : '—'}</td>
+      <td class="numeric"><strong>${r.hit_rate != null ? r.hit_rate + '%' : '—'}</strong></td>
+      <td class="numeric muted">${r.baseline_hit != null ? r.baseline_hit + '%' : '—'}</td>
+      <td class="${dCls}">${dLabel}</td>
+    </tr>`;
+  }).join('');
+  el.innerHTML = `
+    <table class="performance-table">
+      <thead><tr>
+        <th>Market</th><th>n</th><th>W</th><th>L</th><th>V</th>
+        <th>Win%</th><th>Non-loss%</th><th>Baseline</th><th>vs baseline</th>
+      </tr></thead>
+      <tbody>${tr}</tbody>
+    </table>
+  `;
+}
+
+function renderZoneMarket(rows) {
+  const el = document.getElementById('reports-zone-market');
+  if (!rows || rows.length === 0) {
+    el.innerHTML = '<div class="empty">No settled emits in window.</div>';
+    return;
+  }
+  const tr = rows.map(r => {
+    const dCls = r.vs_baseline_pp == null ? '' :
+      (r.vs_baseline_pp >= 2 ? 'positive' : (r.vs_baseline_pp <= -5 ? 'negative' : ''));
+    const ignore = r.n < 5 ? ` <span class="muted">(n=${r.n} ignore)</span>` : '';
+    return `<tr>
+      <td><strong>${r.zone}</strong></td>
+      <td>${marketLabel(r.market)}</td>
+      <td class="numeric">${r.n}${ignore}</td>
+      <td class="numeric"><strong>${r.hit_rate != null ? r.hit_rate + '%' : '—'}</strong></td>
+      <td class="numeric muted">${r.baseline_hit != null ? r.baseline_hit + '%' : '—'}</td>
+      <td class="${dCls}">${r.vs_baseline_pp != null ? (r.vs_baseline_pp >= 0 ? '+' : '') + r.vs_baseline_pp + 'pp' : '—'}</td>
+    </tr>`;
+  }).join('');
+  el.innerHTML = `
+    <table class="performance-table">
+      <thead><tr>
+        <th>Zone</th><th>Market</th><th>n</th><th>Non-loss%</th><th>Baseline</th><th>Δ</th>
+      </tr></thead>
+      <tbody>${tr}</tbody>
+    </table>
+  `;
+}
+
+function renderPendingBreakdown(rows) {
+  const el = document.getElementById('reports-pending-breakdown');
+  if (!rows || rows.length === 0) {
+    el.innerHTML = '<div class="empty">No pending picks in window.</div>';
+    return;
+  }
+  const tr = rows.map(r => {
+    const playedCls = r.played > 0 ? 'negative' : 'muted';
+    return `<tr>
+      <td><strong>${marketLabel(r.market)}</strong></td>
+      <td class="numeric">${r.total}</td>
+      <td class="numeric ${playedCls}">${r.played}</td>
+      <td class="numeric muted">${r.upcoming}</td>
+    </tr>`;
+  }).join('');
+  el.innerHTML = `
+    <table class="performance-table">
+      <thead><tr>
+        <th>Market</th><th>Pending</th><th>Played (settlement gap)</th><th>Upcoming (normal)</th>
+      </tr></thead>
+      <tbody>${tr}</tbody>
+    </table>
+  `;
 }
 
 async function loadReportsSettleActivity(days) {
@@ -817,6 +929,11 @@ async function loadReportsEmitMarketBreakdown(days, tier) {
     const url = `/reports/emit_market_breakdown?days=${days}` + (tier ? `&tier=${tier}` : '');
     const r = await fetch(url);
     const body = await r.json();
+    // Drive the three new summary tables off the same payload.
+    renderMarketsSummary(body.markets_summary);
+    renderZoneMarket(body.zone_market_summary);
+    renderPendingBreakdown(body.pending_breakdown);
+
     if (!body.cells || body.cells.length === 0) {
       el.innerHTML = '<div class="empty">No engine emits in window.</div>';
       return;
@@ -825,16 +942,20 @@ async function loadReportsEmitMarketBreakdown(days, tier) {
       const promoteChip = cell.is_promoted
         ? '<span class="chip chip-premium">PROMOTE</span>'
         : '<span class="chip muted">non-promote</span>';
-      const marketRows = cell.markets.map(m => `
+      const marketRows = cell.markets.map(m => {
+        const hitCls = (m.hit_rate || 0) >= 60 ? 'positive' :
+          (m.hit_rate != null && m.hit_rate < 45 ? 'negative' : '');
+        return `
         <div class="market-bd-row">
           <span class="market-bd-label">${marketLabel(m.market)}</span>
-          <span class="market-bd-pick">${m.pick}</span>
           <span class="market-bd-n">n=${m.n}</span>
-          <span class="market-bd-hit ${(m.hit_rate || 0) >= 60 ? 'positive' : (m.hit_rate || 0) < 45 && m.hit_rate != null ? 'negative' : ''}">
+          <span class="market-bd-n muted">W${m.wins}/L${m.losses}${m.voids ? '/V' + m.voids : ''}</span>
+          <span class="market-bd-hit ${hitCls}">
             ${m.hit_rate != null ? m.hit_rate + '%' : '—'}
           </span>
         </div>
-      `).join('');
+      `;
+      }).join('');
       return `
         <div class="market-bd-cell">
           <div class="market-bd-header">

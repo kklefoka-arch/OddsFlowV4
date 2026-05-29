@@ -42,9 +42,10 @@ LEAGUES = [
     (3550, "Japan",               "J2/J3 100 Year Vision League",2),
     (989,  "China",               "Super League",                2),
     # T3 — lower tiers / development leagues
+    # (797 USL League Two removed 2026-05-29 — operator dropped from API subscription.
+    #  DB row in `leagues` table kept for historical fixture FK integrity.)
     (1642, "Argentina",           "Reserve League",              3),
     (351,  "Iceland",             "2. Deild",                    3),
-    (797,  "United States",       "USL League Two",              3),
     (1607, "United States",       "USL League One",              3),
     (2545, "United States",       "MLS Next Pro",                3),
     (1098, "Bolivia",             "Liga De Futbol Prof",         3),

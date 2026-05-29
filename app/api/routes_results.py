@@ -31,8 +31,8 @@ ACTIVE_LEAGUES = {
     573, 444, 345, 292, 360, 779, 648, 3537, 1034,
     # T2
     393, 405, 579, 585, 588, 681, 678, 696, 1689, 295, 286, 289, 791, 3550, 989,
-    # T3
-    1642, 351, 797, 1607, 2545, 1098,
+    # T3 (797 USL League Two removed 2026-05-29 — operator dropped from API subscription)
+    1642, 351, 1607, 2545, 1098,
 }
 
 # Sportmonks state short_name / developer_name values that indicate FT
