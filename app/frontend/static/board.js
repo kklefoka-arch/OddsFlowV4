@@ -20,6 +20,12 @@ let RAW = [];  // grouped fixtures
 const $ = (id) => document.getElementById(id);
 const compClass = (h) => h == null ? '' : h >= 74 ? 'hi' : h >= 66 ? 'mid' : 'lo';
 const kdt = (s) => (s || '').replace('T', ' ').slice(0, 16);
+const fmtTime = (s) => {
+  if (!s) return '—';
+  const d = new Date(s.replace(' ', 'T') + 'Z');           // stored UTC → viewer-local
+  if (isNaN(d)) return s;
+  return d.toLocaleString(undefined, { weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
+};
 
 // ---- build chip groups (all on by default = no filtering) ----
 function buildChips() {
@@ -127,30 +133,41 @@ function render() {
 
 function card(o) {
   const fx = o.fx;
+  // green-light the highest-confidence market in this cell
+  let best = null, bestHit = -1;
+  o.mkts.forEach(m => { const h = fx.markets[m] && fx.markets[m].hit; if (h != null && h > bestHit) { bestHit = h; best = m; } });
   const pk = (m) => {
     const x = fx.markets[m]; if (!x) return '';
     const label = m === 'goals_nl' ? `Over ${x.line} Goals`
                 : m === 'corners_nl' ? `Over ${x.line} Corners`
                 : x.pick;
     const odd = x.odd != null ? `<span class="pk-odd">@${x.odd}</span>` : '';
-    return `<div class="pk"><span class="pk-name">${MKT_LABEL[m]}: ${label}${odd}</span>
+    const isBest = m === best;
+    const badge = isBest ? '<span class="gl-badge">★ best</span>' : '';
+    return `<div class="pk${isBest ? ' gl' : ''}"><span class="pk-name">${badge}${MKT_LABEL[m]}: ${label}${odd}</span>
             <span class="pk-hit"><b>${x.hit ?? '—'}%</b></span></div>`;
   };
   const sig = state.signals ? `<div class="sig">
       <span class="s ${fx.spread}">spread ${fx.spread || '—'}</span>
       <span class="s">${fx.df || '—'}</span>
       <span class="s ${fx.h2h}">h2h ${fx.h2h || 'none'}</span>
-      ${fx.odds_updated_at ? '' : '<span class="s">odds: base</span>'}
     </div>` : '';
   return `<div class="card">
     <div class="card-h">
-      <div><div class="teams">${fx.home || ''} <span class="meta">v</span> ${fx.away || ''}</div>
-        <div class="meta">${fx.league || ''} · T${fx.tier ?? '?'} · ${kdt(fx.kickoff)}
-          <span class="pill-bts ${fx.bts}">${fx.zone} ${fx.bts}</span></div></div>
-      <div class="comp ${compClass(o.comp)}">${o.comp ?? '—'}<span style="font-size:11px;color:var(--muted)">%</span></div>
+      <div class="card-l">
+        <div class="teams">${fx.home || ''} <span class="vs">v</span> ${fx.away || ''}</div>
+        <div class="kick">🕑 ${fmtTime(fx.kickoff)}</div>
+        <div class="lg">${fx.league || ''} · ${fx.country || ''} · T${fx.tier ?? '?'}</div>
+      </div>
+      <div class="card-r">
+        <div class="comp ${compClass(o.comp)}">${o.comp ?? '—'}<span class="comp-pct">%</span></div>
+        <span class="pill-bts ${fx.bts}">${fx.zone} ${fx.bts}</span>
+      </div>
     </div>
     ${o.mkts.map(pk).join('')}
     ${sig}
+    <button class="recent-toggle" data-fid="${fx.id}">recent in this cell ▾</button>
+    <div class="recent" data-fid="${fx.id}"></div>
   </div>`;
 }
 
@@ -193,6 +210,31 @@ function init() {
   $('t-compact').onchange = (e) => { state.compact = e.target.checked; render(); };
   $('f-refresh').onclick = load;
   $('f-reset').onclick = () => { location.reload(); };
+
+  // recent-results-for-similar-odds: expand a card to the cell's recent settled results
+  $('bd-results').addEventListener('click', async (e) => {
+    const btn = e.target.closest('.recent-toggle');
+    if (!btn) return;
+    const fid = btn.dataset.fid;
+    const box = btn.parentElement.querySelector(`.recent[data-fid="${fid}"]`);
+    if (box.dataset.open === '1') { box.style.display = 'none'; box.dataset.open = '0'; btn.textContent = 'recent in this cell ▾'; return; }
+    if (!box.dataset.loaded) {
+      btn.textContent = 'loading…';
+      try {
+        const d = await (await fetch(`/inspector/similar?fixture_id=${fid}`)).json();
+        const rows = (d.fixtures || []).slice(0, 8).map(f => {
+          const cls = f.tw_green ? 'rg' : 'rr';
+          return `<div class="recent-row"><span class="rmark ${cls}">${f.tw_green ? '✓' : '✗'}</span>
+                  <span class="rdate">${(f.date || '').slice(0, 10)}</span>
+                  <span class="rteams">${f.home_team} <b>${f.home_score}-${f.away_score}</b> ${f.away_team}</span></div>`;
+        }).join('');
+        box.innerHTML = `<div class="recent-head">${d.partition_key} · 3-way hit ${d.threeway_hit ?? '—'}% · n=${d.sample_n ?? 0}</div>${rows || '<div class="lg">no recent settled in this cell</div>'}`;
+        box.dataset.loaded = '1';
+      } catch (err) { box.innerHTML = '<div class="lg">error loading recent</div>'; }
+    }
+    box.style.display = 'block'; box.dataset.open = '1'; btn.textContent = 'recent in this cell ▴';
+  });
+
   load();
 }
 init();

@@ -65,6 +65,27 @@ body{margin:0;background:var(--bg);color:var(--ink);font-family:Nunito,system-ui
 .s.strong{background:rgba(63,185,80,.18);border-color:var(--good);color:#86e29a}
 .pill-bts{font-size:10px;padding:2px 8px;border-radius:10px;font-weight:700}
 .pill-bts.over{background:var(--over);color:#fff} .pill-bts.under{background:var(--under);color:#fff}
-.compact .pk-odd,.compact .meta{display:none}
+.compact .pk-odd,.compact .meta,.compact .lg{display:none}
+/* card header layout: prominent time + league */
+.card-l{min-width:0}
+.card-r{text-align:right;display:flex;flex-direction:column;align-items:flex-end;gap:4px}
+.vs{color:var(--muted);font-weight:400;font-size:12px}
+.kick{font-family:'JetBrains Mono',monospace;font-size:12px;color:var(--accent);margin-top:3px}
+.lg{font-size:11px;color:var(--muted);margin-top:2px}
+.comp-pct{font-size:11px;color:var(--muted)}
+/* green-light: highest-confidence market in the cell */
+.pk.gl{background:rgba(63,185,80,.10);margin:0 -14px;padding-left:14px;padding-right:14px;border-top:1px solid rgba(63,185,80,.35)}
+.pk.gl .pk-name{color:#86e29a;font-weight:700}
+.gl-badge{font-size:9px;background:var(--good);color:#04121f;border-radius:8px;padding:1px 6px;margin-right:6px;font-weight:800;vertical-align:middle}
+/* recent results for similar odds */
+.recent-toggle{margin-top:9px;width:100%;background:var(--panel2);border:1px solid var(--line);color:var(--muted);border-radius:6px;padding:5px;font-size:11px;cursor:pointer}
+.recent-toggle:hover{color:var(--ink);border-color:var(--accent2)}
+.recent{display:none;margin-top:8px}
+.recent-head{font-size:11px;color:var(--accent);font-family:'JetBrains Mono',monospace;margin-bottom:5px}
+.recent-row{display:flex;gap:8px;align-items:center;font-size:11px;padding:2px 0;color:var(--muted)}
+.recent-row .rteams{color:var(--ink)} .recent-row .rteams b{font-family:'JetBrains Mono',monospace}
+.rdate{font-family:'JetBrains Mono',monospace;min-width:74px}
+.rmark{font-weight:800;width:14px;display:inline-block;text-align:center}
+.rmark.rg{color:var(--good)} .rmark.rr{color:var(--bad)}
 .bd-foot{padding:16px 18px;color:var(--muted);font-size:11px;border-top:1px solid var(--line)}
 .bd-empty{grid-column:1/-1;color:var(--muted);text-align:center;padding:40px}
