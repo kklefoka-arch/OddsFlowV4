@@ -244,9 +244,10 @@ for week_start in sorted(by_week):
         if home_corners is not None and away_corners is not None:
             conn.execute("""
                 INSERT OR REPLACE INTO fixture_stats
-                    (fixture_id, home_corners, away_corners, total_corners)
-                VALUES (?, ?, ?, ?)
-            """, (db_row["id"], home_corners, away_corners, home_corners + away_corners))
+                    (fixture_id, home_corners, away_corners, total_corners, raw_stats_json)
+                VALUES (?, ?, ?, ?, ?)
+            """, (db_row["id"], home_corners, away_corners, home_corners + away_corners,
+                  json.dumps(fx.get("statistics") or [])))
             inserted_stats += 1
 
     time.sleep(0.5)

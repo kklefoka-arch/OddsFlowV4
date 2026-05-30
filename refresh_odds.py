@@ -145,9 +145,11 @@ for i in range(0, len(sm_ids), 50):
               goals_over_35_odd  = COALESCE(?, goals_over_35_odd),
               corners_over_85_odd = COALESCE(?, corners_over_85_odd),
               updated_at = ?,
-              odds_updated_at = ?
+              odds_updated_at = ?,
+              raw_odds_json = ?
             WHERE id = ?
-        """, (ho, do, ao, by, bn, g15, g25, g35, c85, now_ts, now_ts, db_id))
+        """, (ho, do, ao, by, bn, g15, g25, g35, c85, now_ts, now_ts,
+              json.dumps(fx.get("odds") or []), db_id))
         if conn.total_changes > 0:
             updated += 1
     time.sleep(0.4)

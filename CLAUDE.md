@@ -1,4 +1,4 @@
-# OddsFlow V4 — Ground-Zero Engine (Re-Foundation 2026-05-30, DF reverted to a signal)
+# OddsFlow V4 — v4 Engine (zone × BTS yes/no, 8 cells; spread/DF/H2H as signals)
 
 **This is the only OddsFlow project.** One folder, one repo, one DB.
 Read this file at the start of every session. Update it at the end. Commit it.
@@ -10,21 +10,22 @@ Host (local): `http://localhost:8083` | Host (ngrok): `https://steadier-legwarme
 
 ## Project overview
 
-Football betting analytics engine. Ingests pre-match fixtures and odds from Sportmonks, classifies each fixture into a **(draw_zone × BTS pocket)** cell, and emits picks for the cells in the ground-zero policy. The structured edge is in the partition — `draw_odd × bts_parent` reveals the layer where hit rates concentrate.
+Football betting analytics engine. Ingests pre-match fixtures and odds from Sportmonks, classifies each fixture into a **(draw_zone × BTS direction)** cell, and emits picks for the cells in the v4 policy. The structured edge is in the partition — `draw_odd × bts(yes/no)` reveals the layer where hit rates concentrate.
 
-**Two-layer architecture (Re-Foundation 2026-05-30):**
-- **Ground-zero engine (this app):** `(zone × bts)` partition, natural lines, **hit-rate only**. DF and the H2H-corner count are *qualifying signals* (confidence chips + a few hard gates), NOT partition axes. No EV, no Wilson.
-- **Advanced "Picks Log" layer:** Most-likely / Mean / Optimistic 72h-locked configs built *on the back of* ground zero. **EV / economic modelling belongs here, never in ground zero.** Currently legs-only (no EV yet).
+**Two-layer architecture:**
+- **v4 engine (this app):** `(zone × bts)` partition where `bts ∈ {over, under}` — **8 cells, hit-rate only**. The BTS strong/slight **spread**, **DF**, and the **H2H-corner** count are *qualifying signals* (confidence chips + one goals-override), NOT partition axes. No EV, no Wilson. No hard suppression gates.
+- **Advanced "Picks Log" layer:** Most-likely / Mean / Optimistic 72h-locked configs built *on the back of* the engine. **EV / economic modelling belongs here, never in the engine.** Currently legs-only (no EV yet, by design — introduced only after the build is validated in full).
 
-**Ground-zero policy (Re-Foundation 2026-05-30):**
-15 active cells, 2-key `(zone, bts_pocket)`, 3 markets per cell (goals_nl, corners_nl, threeway). Hit rate is the only edge metric. Drawn in the analysis project: `Output/ground_zero_policy_FINAL_2026-05-30.txt`.
+**v4 policy (2026-05-30):** 8 active cells, 2-key `(zone, bts)`, 3 markets per cell (goals_nl O1.5 / corners_nl O7.5(strong)·O8.5 / threeway alpha-or-draw). Drawn from a fresh from-scratch test + adversarial feasibility workflow (GO_WITH_CONDITIONS) in `C:\OddsFlow V4 Website\` (`policy/v4_policy.md`, `test/sheets/v4_test_2026-05-30.xlsx`).
+
+**Data foundation:** full-capture landing (`raw_odds_json` on fixtures, `raw_stats_json` on fixture_stats — nothing the API returns leaks unaccounted). **Odds are frozen at settlement** (refresh_odds only touches `home_score IS NULL`; fetch_upcoming skips past-dated fixtures) — so averages/calcs use the odds the fixture settled on *our* system, never the live source. `odds_updated_at` stamps freshness; refresh widened to 30h pre-KO. H2H-corner signal is derived local-first from our own prior meetings (live on upcoming fixtures). User surface: `/board` (Picks / Results / Performance / Picks-Log).
 
 ## Durable rules (do not violate without operator approval)
 
 These rules exist because Sessions 12–18 drifted away from Project 1 — DF got introduced as a partition key, EV calibration findings retrofitted into the engine, doc state diverged. Session 19 (this) restores the framework. Future sessions must hold this line.
 
 0. **The engine reads structural patterns from odds, not from form/position/attack stats.** Bookmaker odds (`draw_odd`, `btts_yes/no_odd`, `home_odd`, `away_odd`) are the market's compressed consensus across every signal a traditional analyst would weigh. The (zone × DF × bts) partition reveals the structural regions where outcomes concentrate — and the engine's edge is reading those regions directly, not re-deriving them from surface features. When an engine pick disagrees with conventional analysis ("they're in poor form", "their attack is weak"), trust the partition's historical hit rate. The market priced what it priced for a reason; the engine reads that pricing back. Results validate; pundits don't.
-1. **No DF as a partition axis — DF is a SIGNAL.** (Re-Foundation 2026-05-30 re-pinned this after the Session-23c override was reversed by operator decision.) The partition is `(zone, bts_pocket)`, 2-key. `df_of()` still computes DF0/DF1/DF2 but DF is used as a *qualifying signal* (confidence chip + the few hard gates in `static_policy.py`), exactly like the H2H-corner count — never a cell key. Evidence: the re-run deep test measured DF as a within-cell split (e.g. standard:strong_over composite DF0 67.1→DF1 73.7→DF2 82.1) and the operator adopted the signal model. `Output/GROUND_ZERO_TEST_2026-05-30.md`.
+1. **Partition is `(zone, bts)` where `bts ∈ {over, under}` — 8 cells. DF AND the BTS strong/slight spread are SIGNALS, not cell axes.** (v4, 2026-05-30. The BTS axis was reduced to its pure yes/no direction; the strong/slight spread, DF, and H2H-corner are qualifying signals.) Evidence (fresh test + feasibility workflow GO_WITH_CONDITIONS): the 8-cell form matches the old 15-cell on hit-rate with zero thin cells; the spread split spawned dead n=16/19/18 cells and gave tiny/sign-inconsistent gaps; DF is dead in 5/8 cells. The one preserved edge is a **goals-override** (standard:over / low:over fire goals at the strong-spread rate when spread==strong) — a per-market signal, not a cell. `policy/v4_policy.md`. If a future session wants to re-partition on spread/DF, that's an operator decision; document it the same way.
 2. **No EV / economic models in the live engine.** Breakeven odds, EV, Wilson intervals — all stay in the analysis folder and the **advanced Picks Log layer**. The ground-zero engine measures, emits, settles, and reports hit rate. Nothing else gates picks. **Unchanged.**
 3. **Hit rate convention.** The ground-zero 3-way pick is **alpha-or-draw**: a draw is a protected WIN (no 0.5 void). Hit rate = wins / settled (binary). Legacy `dnb` rows still settle under the old `(wins+voids)/settled` for their tail. Wilson is out. **Re-pinned 2026-05-30 (void retired at ground zero).**
 4. **Calibration / EV lives in the advanced layer.** Project 2-style calibration + EV is computed and shown only in the Picks Log layer, never gating ground-zero emission. (The 6-week clock for re-baselining the policy under live-only data starts 2026-05-30.)
@@ -32,23 +33,20 @@ These rules exist because Sessions 12–18 drifted away from Project 1 — DF go
 6. **Foundation matrix splits on T1+T2 and T3.** (Changed 2026-05-30 from "T1 vs T2+T3" to country-context tiers grouped **T1+T2 vs T3**.) Tier slices live; mixed tiers are noise.
 7. **No team form / position / predicted-uncertainty weighting.** Only odds drivers (zone × bts) + the two signals (DF, H2H corner counts — counts, not averages) are valid. Anything beyond those is research, not engine.
 
-## Current state — Ground-Zero engine (Re-Foundation 2026-05-30)
+## Current state — v4 engine (2026-05-30)
 
-**15 active cells, 2-key `(zone, bts_pocket)`.** 3 markets per cell. Drawn from the re-run deep test on 28,539 settled fixtures (`Output/GROUND_ZERO_TEST_2026-05-30.md`; policy `Output/ground_zero_policy_FINAL_2026-05-30.txt`). min_n is no longer a hard exclusion (operator decision) — every cell with data promotes; thin cells (n<45) are flagged `provisional` and watched by live drift.
+**8 active cells, 2-key `(zone, bts)` where `bts ∈ {over, under}`.** Drawn from a fresh from-scratch test on 28,571 settled fixtures + an adversarial feasibility workflow (GO_WITH_CONDITIONS). All 8 cells have n≥802 — **zero thin cells** (the old 15-cell 4-pocket form carried three n=16/19/18 noise cells; collapsing BTS to its pure direction removed them at equal hit-rate). Evidence + policy in `C:\OddsFlow V4 Website\` (`test/sheets/v4_test_2026-05-30.xlsx`, `policy/v4_policy.md`).
 
-**Natural lines (revised — the old escalating O2.5/O9.5 was disproven by the line sweep):**
-- **goals_nl: Over 1.5 in ALL zones.**
-- **corners_nl: Over 7.5 (strong) / Over 8.5 (standard, low, one_sided).**
-- **threeway: alpha-or-draw in ALL zones** (a draw is a WIN; straight-win moves to the advanced Optimistic config).
+**The 8 cells (composite = mean of the 3 market hit-rates):** strong:over 70.3 · strong:under 69.5 · standard:over 71.3 · standard:under 69.9 · low:over 75.6 · low:under 71.8 · one_sided:over 80.4 · one_sided:under 80.6.
 
-**Cells:** strong {slight_over, slight_under, strong_under}; standard {strong_over, slight_over, slight_under, strong_under}; low {strong_over, slight_over, slight_under, strong_under}; one_sided {strong_over, slight_over, slight_under, strong_under}. (`strong:strong_over` absent — 0 historical fixtures.) Composites ~70–81% (low rose from 53–60% under the revised lines).
+**Markets per cell:** goals_nl **O1.5** (all zones) · corners_nl **O7.5** (strong) / **O8.5** (rest) · threeway **alpha-or-draw** (a draw is a WIN; straight-win lives in the advanced Optimistic config).
 
-**DF + H2H-corner are SIGNALS (5 hard gates):**
-- `standard:strong_over` — suppress whole cell when DF0 (67.1% vs DF1/DF2 73.7/82.1).
-- corners_nl suppressed when h2h_corner=`under` for: standard:strong_over, standard:slight_under, low:strong_over, low:slight_under.
-- All other DF/H2H signals are display-only confidence context (`df` + `h2h_corner` on each pick card).
+**Signals (NOT cell axes — no hard suppression gates in v4):**
+- **BTS spread** (strong/slight): display chip + **one goals-override** — in `standard:over` & `low:over`, when spread==strong the goals leg carries the strong-spread rate (83.8% / 85.0%) instead of the blended cell rate. A per-market tilt (Rule 5), not a cell.
+- **DF** (DF0/1/2): display chip + threeway-confidence note where monotone (strong:under, standard:over DF2). Dead in 5/8 cells → never a partition.
+- **H2H-corner** (over/under/none): display-only, derived **local-first** from our own prior meetings (live on upcoming fixtures).
 
-**Why three markets per fixture:** the 3-way (alpha-or-draw) measures the market's structural confidence in the favourite; goals_nl + corners_nl measure over-total expectation. The advanced **Picks Log** layer derives Most-likely/Mean/Optimistic bet configs from these natural emits (legs-only for now; EV later).
+**Why three markets per fixture:** the 3-way (alpha-or-draw) measures the market's structural confidence in the favourite; goals_nl + corners_nl measure over-total expectation. The advanced **Picks Log** layer derives Most-likely/Mean/Optimistic configs from these emits (legs-only; EV only after full validation).
 
 ## Zone boundaries (raw-notes overlay)
 

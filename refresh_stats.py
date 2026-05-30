@@ -187,9 +187,9 @@ for week_start in sorted(by_week):
             continue
         conn.execute("""
             INSERT OR REPLACE INTO fixture_stats
-              (fixture_id, home_corners, away_corners, total_corners)
-            VALUES (?, ?, ?, ?)
-        """, (db_row["id"], hc, ac, hc + ac))
+              (fixture_id, home_corners, away_corners, total_corners, raw_stats_json)
+            VALUES (?, ?, ?, ?, ?)
+        """, (db_row["id"], hc, ac, hc + ac, json.dumps(fx.get("statistics") or [])))
         filled += 1
         print(f"    OK {db_row['home_team_name']} vs {db_row['away_team_name']}  "
               f"corners={hc}+{ac}")

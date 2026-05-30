@@ -48,6 +48,10 @@ def _run_migrations(conn: sqlite3.Connection) -> None:
         "ALTER TABLE emit_log ADD COLUMN df_level TEXT",
         # v4 data-foundation (2026-05-30) — odds freshness stamp (no-stale-odds)
         "ALTER TABLE fixtures ADD COLUMN odds_updated_at TEXT",
+        # v4 full-capture landing (DATA_LANDING_PRINCIPLE) — land the whole payload
+        # so nothing the API returns leaks unaccounted; extract more fields later.
+        "ALTER TABLE fixtures      ADD COLUMN raw_odds_json  TEXT",
+        "ALTER TABLE fixture_stats ADD COLUMN raw_stats_json TEXT",
         # system_health table (if not in schema.sql)
         # pick_results outcome column (ensure it exists)
     ]
