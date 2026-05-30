@@ -46,6 +46,8 @@ def _run_migrations(conn: sqlite3.Connection) -> None:
         # V3.1 (2026-05-27) — DF-aware partition
         "ALTER TABLE fixtures ADD COLUMN df_level TEXT",
         "ALTER TABLE emit_log ADD COLUMN df_level TEXT",
+        # v4 data-foundation (2026-05-30) — odds freshness stamp (no-stale-odds)
+        "ALTER TABLE fixtures ADD COLUMN odds_updated_at TEXT",
         # system_health table (if not in schema.sql)
         # pick_results outcome column (ensure it exists)
     ]

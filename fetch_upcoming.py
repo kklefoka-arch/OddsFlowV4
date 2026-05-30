@@ -260,11 +260,11 @@ for fx in fixtures:
                 btts_yes_odd=?, btts_no_odd=?,
                 goals_over_15_odd=?, goals_over_25_odd=?, goals_over_35_odd=?,
                 corners_over_75_odd=?, corners_over_85_odd=?, corners_over_95_odd=?,
-                draw_zone=?, bts_pocket=?, updated_at=?
+                draw_zone=?, bts_pocket=?, updated_at=?, odds_updated_at=?
             WHERE sportmonks_id=?
         """, (internal_league_id, kickoff_utc, home_odd, draw_odd, away_odd,
               btts_yes, btts_no, g15, g25, g35, c75, c85, c95,
-              fx_zone, fx_bts, now_ts, sm_id))
+              fx_zone, fx_bts, now_ts, now_ts, sm_id))
         updated += 1
     else:
         conn.execute("""
@@ -274,15 +274,15 @@ for fx in fixtures:
                  home_odd, draw_odd, away_odd, btts_yes_odd, btts_no_odd,
                  goals_over_15_odd, goals_over_25_odd, goals_over_35_odd,
                  corners_over_75_odd, corners_over_85_odd, corners_over_95_odd,
-                 draw_zone, bts_pocket, created_at, updated_at)
-            VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+                 draw_zone, bts_pocket, created_at, updated_at, odds_updated_at)
+            VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
         """, (
             sm_id, internal_league_id, tier, kickoff_utc, "scheduled",
             ht["id"], at["id"],
             home_team.get("name"), away_team.get("name"),
             home_odd, draw_odd, away_odd, btts_yes, btts_no,
             g15, g25, g35, c75, c85, c95,
-            fx_zone, fx_bts, now_ts, now_ts,
+            fx_zone, fx_bts, now_ts, now_ts, now_ts,
         ))
         inserted += 1
 

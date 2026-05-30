@@ -119,21 +119,33 @@ def make_pick_uuid(fixture_id: int, market: str, pick: str) -> str:
     return hashlib.sha256(f"{fixture_id}:{market}:{pick}".encode()).hexdigest()[:36]
 
 
-def _h2h_corner_signal(conn: sqlite3.Connection, fixture_id: int) -> str:
-    """H2H-corner signal for a fixture (count-based, per Durable Rule 9).
+def _h2h_corner_signal(conn: sqlite3.Connection, home_team_id, away_team_id,
+                        before_date) -> str:
+    """H2H-corner signal — LOCAL-FIRST (count-based, Durable Rule 9).
 
-    'over'  = majority of prior meetings (>= H2H_MIN_MEETINGS with corner data)
-              had >= H2H_HIGH_CORNERS corners; 'under' = majority below;
+    Derived from our OWN prior settled meetings of the two teams (either
+    orientation) with corner data, BEFORE this fixture's date — so it works on
+    upcoming fixtures (the seeded ``h2h_meetings`` table is historical-only).
+
+    'over'  = majority of prior meetings (>= H2H_MIN_MEETINGS) had
+              >= H2H_HIGH_CORNERS corners; 'under' = majority below;
               'none' = too few meetings to call.
     """
+    if home_team_id is None or away_team_id is None:
+        return "none"
     row = conn.execute(
         """
-        SELECT SUM(CASE WHEN total_corners >= ? THEN 1 ELSE 0 END) AS hi,
-               COUNT(total_corners) AS tot
-        FROM h2h_meetings
-        WHERE anchor_fixture_id = ? AND total_corners IS NOT NULL
+        SELECT SUM(CASE WHEN fs.total_corners >= ? THEN 1 ELSE 0 END) AS hi,
+               COUNT(fs.total_corners) AS tot
+        FROM fixtures f
+        JOIN fixture_stats fs ON fs.fixture_id = f.id
+        WHERE f.home_score IS NOT NULL
+          AND fs.total_corners IS NOT NULL
+          AND f.date < ?
+          AND ((f.home_team_id = ? AND f.away_team_id = ?)
+            OR (f.home_team_id = ? AND f.away_team_id = ?))
         """,
-        (H2H_HIGH_CORNERS, fixture_id),
+        (H2H_HIGH_CORNERS, before_date, home_team_id, away_team_id, away_team_id, home_team_id),
     ).fetchone()
     if not row or (row["tot"] or 0) < H2H_MIN_MEETINGS:
         return "none"
@@ -296,12 +308,13 @@ def picks(days: int = Query(3, ge=1, le=14)) -> dict[str, Any]:
     try:
         rows = conn.execute(
             """
-            SELECT f.id, f.date, f.tier,
+            SELECT f.id, f.date, f.tier, f.home_team_id, f.away_team_id,
                    f.home_odd, f.draw_odd, f.away_odd,
                    f.btts_yes_odd, f.btts_no_odd,
                    f.goals_over_15_odd,
                    f.corners_over_75_odd,
                    f.corners_over_85_odd,
+                   f.odds_updated_at,
                    ht.name AS home_team, at2.name AS away_team,
                    lg.name AS league, lg.country, lg.tier AS league_tier
             FROM fixtures f
@@ -364,7 +377,8 @@ def picks(days: int = Query(3, ge=1, le=14)) -> dict[str, Any]:
             # H2H-corner signal — DISPLAY only in v4 (no suppression gates).
             if d["id"] not in h2h_cache:
                 try:
-                    h2h_cache[d["id"]] = _h2h_corner_signal(conn, d["id"])
+                    h2h_cache[d["id"]] = _h2h_corner_signal(
+                        conn, d.get("home_team_id"), d.get("away_team_id"), d.get("date"))
                 except Exception:
                     h2h_cache[d["id"]] = "none"
             h2h_sig = h2h_cache[d["id"]]
@@ -428,6 +442,7 @@ def picks(days: int = Query(3, ge=1, le=14)) -> dict[str, Any]:
                 picks_out.append({
                     "fixture_id":               d["id"],
                     "kickoff_utc":              d["date"],
+                    "odds_updated_at":          d.get("odds_updated_at"),
                     "home_team":                d.get("home_team") or "",
                     "away_team":                d.get("away_team") or "",
                     "league":                   d.get("league") or "",

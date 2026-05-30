@@ -25,7 +25,7 @@ TOKEN = os.environ.get(
 )
 DB    = r"C:\OddsFlowV4\data\oddsflow_v4.db"
 BASE  = "https://api.sportmonks.com/v3/football"
-HORIZON_HOURS = 8
+HORIZON_HOURS = 30   # v4 no-stale-odds: refresh every fixture within ~30h of KO
 
 
 def api_get(path: str, params: dict, retries: int = 3) -> dict:
@@ -144,9 +144,10 @@ for i in range(0, len(sm_ids), 50):
               goals_over_25_odd  = COALESCE(?, goals_over_25_odd),
               goals_over_35_odd  = COALESCE(?, goals_over_35_odd),
               corners_over_85_odd = COALESCE(?, corners_over_85_odd),
-              updated_at = ?
+              updated_at = ?,
+              odds_updated_at = ?
             WHERE id = ?
-        """, (ho, do, ao, by, bn, g15, g25, g35, c85, now_ts, db_id))
+        """, (ho, do, ao, by, bn, g15, g25, g35, c85, now_ts, now_ts, db_id))
         if conn.total_changes > 0:
             updated += 1
     time.sleep(0.4)
