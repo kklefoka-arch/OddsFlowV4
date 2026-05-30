@@ -266,12 +266,8 @@ function renderPicksSummary(el, body) {
       <span class="summary-value">${body.window_days}d</span>
     </div>
     <div class="summary-item">
-      <span class="summary-label">DNB</span>
-      <span class="summary-value">${cm.dnb || 0}</span>
-    </div>
-    <div class="summary-item">
-      <span class="summary-label">Alpha Win</span>
-      <span class="summary-value">${cm.alpha_win || 0}</span>
+      <span class="summary-label">3-Way</span>
+      <span class="summary-value">${cm.threeway || cm.dnb || cm.alpha_win || 0}</span>
     </div>
     <div class="summary-item">
       <span class="summary-label">Goals NL</span>
@@ -344,7 +340,7 @@ function renderPicksList(el, picks) {
 
 function renderFixtureCard(picks) {
   // Prefer threeway pick as primary source for drift/hit chip; fall back to first pick
-  const p0 = picks.find(p => p.market === 'dnb' || p.market === 'alpha_win') || picks[0];
+  const p0 = picks.find(p => p.market === 'threeway' || p.market === 'dnb' || p.market === 'alpha_win') || picks[0];
   const dt = parseKickoffUtc(p0.kickoff_utc);
   const date = dt ? dt.toLocaleDateString() : '—';
   const time = dt ? dt.toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'}) : '';
@@ -419,12 +415,13 @@ function renderDriftChipForCard(flag, gap_pp, recent_n) {
 const MARKET_LABELS = {
   total_goals:   'Goals',
   total_corners: 'Corners',
-  dnb:           'DNB (Alpha Win or Draw)',
-  alpha_win:     'Alpha Win',
+  threeway:      '3-Way (Alpha or Draw)',
+  dnb:           'DNB (Alpha Win or Draw)',   // legacy rows
+  alpha_win:     'Alpha Win',                 // legacy rows
   goals_nl:      'Goals — Natural Line',
   corners_nl:    'Corners — Natural Line',
 };
-const MARKET_ORDER = ['total_goals', 'total_corners', 'dnb', 'alpha_win', 'goals_nl', 'corners_nl'];
+const MARKET_ORDER = ['total_goals', 'total_corners', 'threeway', 'dnb', 'alpha_win', 'goals_nl', 'corners_nl'];
 
 function marketLabel(m) {
   return MARKET_LABELS[m] || m;
@@ -533,13 +530,10 @@ function renderFoundationTable(wrap, cells) {
     return;
   }
   const ZONE_ORDER = ['strong', 'standard', 'low', 'one_sided'];
-  const DF_ORDER   = ['DF0', 'DF1', 'DF2', ''];
   const BTS_ORDER  = ['strong_over', 'slight_over', 'slight_under', 'strong_under'];
   const sorted = [...cells].sort((a, b) => {
     const zi = ZONE_ORDER.indexOf(a.zone) - ZONE_ORDER.indexOf(b.zone);
     if (zi !== 0) return zi;
-    const di = DF_ORDER.indexOf(a.df || '') - DF_ORDER.indexOf(b.df || '');
-    if (di !== 0) return di;
     return BTS_ORDER.indexOf(a.bts_pocket) - BTS_ORDER.indexOf(b.bts_pocket);
   });
 
@@ -548,7 +542,7 @@ function renderFoundationTable(wrap, cells) {
     let zoneHdr = '';
     if (cell.zone !== currentZone) {
       currentZone = cell.zone;
-      zoneHdr = `<tr class="fnd-zone-hdr"><td colspan="14">&#9632; ${cell.zone.toUpperCase().replace(/_/g, ' ')}</td></tr>`;
+      zoneHdr = `<tr class="fnd-zone-hdr"><td colspan="13">&#9632; ${cell.zone.toUpperCase().replace(/_/g, ' ')}</td></tr>`;
     }
     const drG = cell.goals_drop_rank
       ? `<span class="fnd-drop rank-${cell.goals_drop_rank}">▼${(cell.goals_1up_drop || 0).toFixed(1)}</span>`
@@ -564,7 +558,6 @@ function renderFoundationTable(wrap, cells) {
     return `${zoneHdr}
     <tr class="${promotedCls} ${lowCls}">
       <td class="fnd-zone">${cell.zone.replace(/_/g, ' ')}</td>
-      <td class="fnd-df">${cell.df || '—'}</td>
       <td class="fnd-bts">${cell.bts_pocket}</td>
       <td class="fnd-num">${cell.n_fixtures}</td>
       <td class="fnd-num muted">${cell.n_pct_of_zone.toFixed(1)}%</td>
@@ -586,7 +579,6 @@ function renderFoundationTable(wrap, cells) {
       <thead>
         <tr>
           <th>Zone</th>
-          <th>DF</th>
           <th>BTS Pocket</th>
           <th class="fnd-num">n</th>
           <th class="fnd-num">n% Zone</th>
@@ -1204,8 +1196,8 @@ function openInspector(picks) {
     <div id="inspector-similar-list"><div class="muted">Loading similar-odds history…</div></div>
   `;
   if (p0.partition_key) {
-    // V3.2 partition_key is 3-part "zone:df:bts" (Session 23c — Rule 1 overridden).
-    // Fall back to 2-part for legacy emit_log rows where df_level is NULL.
+    // Re-Foundation: partition_key is 2-part "zone:bts" (DF is a signal, not a
+    // cell axis). The 3-part branch is kept only for legacy emit_log rows.
     const parts = p0.partition_key.split(':');
     if (parts.length >= 3) {
       const [zone, df, bts] = parts;
