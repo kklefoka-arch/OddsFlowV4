@@ -336,9 +336,10 @@ def picks(days: int = Query(3, ge=1, le=14)) -> dict[str, Any]:
         for row in rows:
             d = dict(row)
             clf = classify_fixture(d)
-            zone = clf.get("zone")
-            bts  = clf.get("bts_pocket")
-            df   = clf.get("df")
+            zone   = clf.get("zone")
+            bts    = clf.get("bts")      # v4 cell axis: over / under
+            spread = clf.get("spread")   # SIGNAL (strong/slight)
+            df     = clf.get("df")       # SIGNAL (DF0/DF1/DF2)
 
             if zone is None or bts is None or df is None:
                 skip_reasons["unclassifiable"] += 1
@@ -359,20 +360,14 @@ def picks(days: int = Query(3, ge=1, le=14)) -> dict[str, Any]:
                 skip_reasons["partition_not_promoted"] += 1
                 continue
 
-            # --- Signal gate 1: DF can suppress the WHOLE cell (confirming verdict).
-            gates = cell_cfg.get("gates", {})
-            if df in gates.get("cell_suppress_df", []):
-                skip_reasons["partition_not_promoted"] += 1
-                continue
-
-            # H2H-corner signal (computed once per fixture, only used by gates/display)
+            cell_signals = cell_cfg.get("signals", {})
+            # H2H-corner signal — DISPLAY only in v4 (no suppression gates).
             if d["id"] not in h2h_cache:
                 try:
                     h2h_cache[d["id"]] = _h2h_corner_signal(conn, d["id"])
                 except Exception:
                     h2h_cache[d["id"]] = "none"
             h2h_sig = h2h_cache[d["id"]]
-            corners_gate = gates.get("corners_suppress_h2h", [])
 
             tier     = d.get("league_tier") or d.get("tier")
             home_odd = d.get("home_odd")
@@ -383,10 +378,7 @@ def picks(days: int = Query(3, ge=1, le=14)) -> dict[str, Any]:
             emitted_any = False
 
             for market, mkt_cfg in cell_cfg.items():
-                if market in ("gates", "signals") or not isinstance(mkt_cfg, dict):
-                    continue
-                # --- Signal gate 2: H2H can suppress corners_nl (confirming verdict).
-                if market == "corners_nl" and h2h_sig in corners_gate:
+                if market in ("signals", "composite", "gates") or not isinstance(mkt_cfg, dict):
                     continue
 
                 drift_key = (zone, bts, market)
@@ -425,6 +417,14 @@ def picks(days: int = Query(3, ge=1, le=14)) -> dict[str, Any]:
                 else:
                     continue
 
+                # v4 goals-override (signal, not a cell): in standard:over / low:over,
+                # when spread==strong the goals leg carries the strong-spread rate.
+                hist_hit = mkt_cfg["hit"]
+                if market == "goals_nl":
+                    _sp = cell_signals.get("spread")
+                    if isinstance(_sp, dict) and spread == _sp.get("goals_override_on"):
+                        hist_hit = _sp.get("goals_hit", hist_hit)
+
                 picks_out.append({
                     "fixture_id":               d["id"],
                     "kickoff_utc":              d["date"],
@@ -442,13 +442,15 @@ def picks(days: int = Query(3, ge=1, le=14)) -> dict[str, Any]:
                     "pick_class":               "promote",
                     "partition_key":            f"{zone}:{bts}",
                     "draw_zone":                zone,
-                    "df":                       df,          # signal (confidence chip), not part of the cell key
-                    "h2h_corner":               h2h_sig,     # signal
-                    "bts_pocket":               bts,
+                    "bts":                      bts,         # v4 cell axis (over/under)
+                    "spread":                   spread,      # signal
+                    "df":                       df,          # signal (confidence chip)
+                    "h2h_corner":               h2h_sig,     # signal (display only)
+                    "bts_pocket":               bts,         # legacy field name = the v4 bts axis
                     "cell_drift_flag":          drift["flag"],
                     "cell_drift_gap_pp":        drift["gap_pp"],
                     "cell_drift_recent_n":      drift["recent_n"],
-                    "cell_historical_hit":      mkt_cfg["hit"],
+                    "cell_historical_hit":      hist_hit,
                     "cell_historical_n":        mkt_cfg["n"],
                     "asian_alternative":        None,
                     "asian_corners_alternative": None,
@@ -457,12 +459,12 @@ def picks(days: int = Query(3, ge=1, le=14)) -> dict[str, Any]:
                     "fixture_id": d["id"],
                     "zone":       zone,
                     "df":         df,
-                    "bts_pocket": bts,
+                    "bts_pocket": bts,      # v4 cell axis (over/under)
                     "tier":       tier,
                     "market":     market,
                     "pick":       pick_label,
                     "pick_odd":   pick_odd,
-                    "confidence": round(mkt_cfg["hit"] / 100, 4),
+                    "confidence": round(hist_hit / 100, 4),
                 })
                 emitted_any = True
 

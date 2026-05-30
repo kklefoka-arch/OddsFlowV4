@@ -13,7 +13,7 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from typing import Any
 
-from app.engine.classify import zone_of, bts_of
+from app.engine.classify import zone_of, bts_yesno
 from app.engine.natural_lines import HALF_LINES, ZONES, BTS_POCKETS, natural_line, system_line
 
 # ---------------------------------------------------------------------------
@@ -153,7 +153,7 @@ def _compute_cells(rows: list[dict]) -> list[dict[str, Any]]:
 
     for row in rows:
         zone = zone_of(row.get("draw_odd"))
-        bts = bts_of(row.get("btts_yes_odd"), row.get("btts_no_odd"))
+        bts = bts_yesno(row.get("btts_yes_odd"), row.get("btts_no_odd"))  # v4: over/under
         if zone is None or bts is None:
             continue
 

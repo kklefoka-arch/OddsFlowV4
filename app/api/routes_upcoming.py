@@ -81,7 +81,7 @@ def upcoming(
         d = dict(row)
         clf = classify_fixture(d)
         zone = clf.get("zone")
-        bts = clf.get("bts_pocket")
+        bts = clf.get("bts")   # v4 cell axis (over/under)
         df = clf.get("df")
         partition_promoted = bool(zone and bts and (zone, bts) in promoted_keys)
 

@@ -10,7 +10,7 @@ from fastapi import APIRouter, Query
 
 from app.api.routes_picks import settle_pick, is_hit
 from app.db.database import get_conn
-from app.engine.classify import zone_of, bts_of
+from app.engine.classify import zone_of, bts_yesno
 from app.engine.foundation import load_foundation
 from app.engine.promotion import compute_foundation, PROMOTE, PROMOTE_TOLERANCE
 from app.engine.static_policy import PROMOTED_CELLS
@@ -303,15 +303,17 @@ def similar(
             ).fetchone()
             if fx:
                 zone = zone_of(fx["draw_odd"])
-                bts  = bts_of(fx["btts_yes_odd"], fx["btts_no_odd"])
+                bts  = bts_yesno(fx["btts_yes_odd"], fx["btts_no_odd"])
 
         if not zone or not bts:
             return {"error": "zone and bts required (or a valid fixture_id)", "fixtures": []}
 
-        # Similar fixtures: the whole (zone, bts) cell.
+        # Similar fixtures: the whole (zone, bts) cell. fixtures.bts_pocket stores the
+        # legacy 4-pocket, so we filter the v4 bts (over/under) in Python from BTTS odds.
         rows = conn.execute("""
             SELECT f.id, f.date, f.home_team_name, f.away_team_name,
                    f.home_score, f.away_score, f.home_odd, f.away_odd, f.draw_odd,
+                   f.btts_yes_odd, f.btts_no_odd,
                    lg.name AS league_name,
                    em.pick_uuid, em.market, em.pick, pr.outcome
             FROM fixtures f
@@ -320,10 +322,10 @@ def similar(
             LEFT JOIN pick_results pr ON pr.pick_uuid = em.pick_uuid
             WHERE f.home_score IS NOT NULL
               AND f.draw_zone  = ?
-              AND f.bts_pocket = ?
             ORDER BY f.date DESC
             LIMIT ?
-        """, (zone, bts, limit)).fetchall()
+        """, (zone, limit * 4)).fetchall()
+        rows = [r for r in rows if bts_yesno(r["btts_yes_odd"], r["btts_no_odd"]) == bts][:limit]
     finally:
         conn.close()
 

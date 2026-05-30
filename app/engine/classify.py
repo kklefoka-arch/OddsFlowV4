@@ -1,13 +1,13 @@
 """OddsFlow V4 — Fixture classification.
 
-Maps draw_odd → draw_zone, (btts_yes_odd, btts_no_odd) → bts_pocket,
+Maps draw_odd → draw_zone, BTTS odds → bts (yes/no) + spread signal,
 and (home_odd, away_odd) → DF bucket.
 
-Re-Foundation (2026-05-30) — Durable Rule 1 re-pinned: the partition is again
-2-key ``(zone, bts_pocket)``. ``df_of`` still computes the DF bucket, but DF is
-now a SIGNAL (confidence chip + the few hard gates in static_policy), NOT a
-partition axis. The H2H-corner count is the other qualifying signal. No Wilson,
-no EV anywhere in this module.
+v4 (2026-05-30) — the partition is the PURE form ``(zone, bts)`` where
+``bts ∈ {over, under}`` (8 cells). The BTS strong/slight **spread**, **DF**, and
+the **H2H-corner** count are SIGNALS, not cell axes (validated by the fresh test
++ feasibility workflow). ``bts_of`` (the legacy 4-pocket) is kept for display /
+back-compat only. No Wilson, no EV anywhere in this module.
 """
 
 from __future__ import annotations
@@ -78,6 +78,33 @@ def bts_of(yes_odd: float | None, no_odd: float | None) -> str | None:
         return "strong_under" if no_odd < 1.50 else "slight_under"
 
 
+def bts_yesno(yes_odd: float | None, no_odd: float | None) -> str | None:
+    """v4 cell axis — pure BTS direction.
+
+        over   yes favoured (yes_odd ≤ no_odd) — both teams expected to score
+        under  no favoured
+
+    Returns None if either odd is missing.
+    """
+    if yes_odd is None or no_odd is None:
+        return None
+    return "over" if yes_odd <= no_odd else "under"
+
+
+def bts_spread(yes_odd: float | None, no_odd: float | None) -> str | None:
+    """v4 SIGNAL — how heavily the favoured BTS side is priced (threshold 1.50).
+
+        strong  favoured side < 1.50
+        slight  favoured side ≥ 1.50
+
+    Used as a confidence chip and the one goals-override (standard:over / low:over
+    fire goals at the strong rate when spread == strong). NOT a cell axis.
+    """
+    if yes_odd is None or no_odd is None:
+        return None
+    return "strong" if min(yes_odd, no_odd) < 1.50 else "slight"
+
+
 def df_of(home_odd: float | None, away_odd: float | None) -> str | None:
     """Classify the home/away odds spread into a DF bucket.
 
@@ -99,19 +126,24 @@ def df_of(home_odd: float | None, away_odd: float | None) -> str | None:
 
 
 def classify_fixture(row: dict) -> dict:
-    """Derive zone, df, bts_pocket, and tier from a fixture dict.
+    """Derive zone, bts (yes/no cell axis), spread+df signals, and tier.
 
     Reads keys: draw_odd, home_odd, away_odd, btts_yes_odd, btts_no_odd, tier.
 
-    Args:
-        row: Mapping containing fixture odds and tier fields.
-
-    Returns:
-        Dict with keys ``zone``, ``df``, ``bts_pocket``, ``tier``.
+    Returns dict with keys:
+        ``zone``       — cell axis (draw zone)
+        ``bts``        — cell axis (over/under) — the v4 BTS direction
+        ``spread``     — SIGNAL (strong/slight)
+        ``df``         — SIGNAL (DF0/DF1/DF2)
+        ``bts_pocket`` — legacy 4-pocket, for display/back-compat only
+        ``tier``
     """
+    y, n = row.get("btts_yes_odd"), row.get("btts_no_odd")
     return {
         "zone": zone_of(row.get("draw_odd")),
+        "bts": bts_yesno(y, n),
+        "spread": bts_spread(y, n),
         "df": df_of(row.get("home_odd"), row.get("away_odd")),
-        "bts_pocket": bts_of(row.get("btts_yes_odd"), row.get("btts_no_odd")),
+        "bts_pocket": bts_of(y, n),
         "tier": row.get("tier"),
     }

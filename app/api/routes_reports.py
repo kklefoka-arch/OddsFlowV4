@@ -13,7 +13,7 @@ from fastapi.responses import StreamingResponse
 
 from app.api.routes_picks import settle_pick
 from app.db.database import get_conn
-from app.engine.classify import zone_of, bts_of
+from app.engine.classify import zone_of, bts_yesno
 from app.engine.foundation import load_foundation
 from app.engine.promotion import compute_foundation, PROMOTE, PROMOTE_TOLERANCE
 from app.settings import settings
@@ -420,7 +420,7 @@ def emit_market_breakdown(
     buckets: dict[tuple[str, str, str], list[float]] = {}
     for r in rows:
         zone = zone_of(r["draw_odd"])
-        bts = bts_of(r["btts_yes_odd"], r["btts_no_odd"])
+        bts = bts_yesno(r["btts_yes_odd"], r["btts_no_odd"])
         if zone is None or bts is None:
             continue
         outcome = settle_pick(r["market"], r["home_score"], r["away_score"],

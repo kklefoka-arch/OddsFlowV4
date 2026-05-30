@@ -1,181 +1,129 @@
-"""OddsFlow Ground-Zero Policy — 2-key (zone, bts_pocket)
-========================================================
-Re-Foundation (2026-05-30). Reverts the Session 23c DF-as-partition decision:
-the partition is again 2-key ``(zone, bts_pocket)``. DF and the H2H-corner count
-are SIGNALS (qualifying filters / confidence context), NOT partition axes — see
-``signals`` / ``gates`` per cell, enforced in routes_picks / settle.
+"""OddsFlow v4 Policy — 2-key (zone, bts) where bts ∈ {over, under}
+=================================================================
+v4 (2026-05-30). The BTS axis is reduced to its PURE direction (over/under) — 8
+cells, all n≥802, zero thin cells. The BTS strong/slight **spread**, **DF**, and
+the **H2H-corner** count are SIGNALS, not cell axes (fresh test + feasibility
+workflow: GO_WITH_CONDITIONS). Drawn in the analysis project:
+``C:\\OddsFlow V4 Website\\policy\\v4_policy_candidate.txt``; evidence
+``...\\test\\sheets\\v4_test_2026-05-30.xlsx``.
 
-Drawn from the re-run deep test (Phase 1, ``Output/GROUND_ZERO_TEST_2026-05-30.md``;
-policy ``Output/ground_zero_policy_FINAL_2026-05-30.txt``), 28,539 settled fixtures,
-Session-19 boundaries. Hit-rate only — NO Wilson, NO EV, NO regression.
+Markets per cell (unchanged from the running build):
+  goals_nl   Over 1.5 (all zones)
+  corners_nl Over 7.5 (strong) / Over 8.5 (rest)
+  threeway   alpha-or-draw (favourite wins OR draw = WIN; no void)
 
-Natural lines (revised, evidence-based via Scripts/sweep_natural_lines.py):
-  goals    O1.5 in ALL zones        (goals_over_15_odd)
-  corners  O7.5 strong / O8.5 rest  (corners_over_75/85_odd)
-  threeway alpha-or-draw ALL zones   (a draw is a protected WIN — NO 0.5 void)
-Straight-win (alpha-only) is NOT a ground-zero market; it lives in the advanced
-Optimistic three-picks-log config.
+Signals (per cell, under ``signals`` — NOT markets, the emit loop skips them):
+  spread        : "display", or {goals_override_on:"strong", goals_hit, n}
+  df            : "display", or {threeway_tilt_on:"DF2", df2_hit}
+  h2h_corner    : "display"
+No hard suppression gates. Hit-rate only — no Wilson, no EV.
 
-No n-based exclusion (operator decision): every (zone,bts) cell with data promotes.
-Cells with n<45 carry ``provisional`` and are confirmed/killed by live drift.
-
-PROMOTED_CELLS — display + inspector metadata, 2-key.
-V3_MARKETS     — per-cell pick configuration consumed by routes_picks.
-V3_ACTIVE      — alias of V3_MARKETS (kept for route compatibility).
+Names V3_MARKETS / V3_ACTIVE / PROMOTED_CELLS kept for route compatibility.
 """
 from __future__ import annotations
 
 from typing import Any
 
-LOW_ZONE_SUPPRESS: bool = False   # low zone is among the strongest under revised lines
+LOW_ZONE_SUPPRESS: bool = False
 
 _GL15 = "goals_over_15_odd"
 _CL75 = "corners_over_75_odd"
 _CL85 = "corners_over_85_odd"
-
-_AOD = "alpha_or_draw"            # 3-way ground-zero pick: favourite wins OR draw -> WIN
+_AOD = "alpha_or_draw"
 
 
 # ---------------------------------------------------------------------------
-# V3_MARKETS — 2-key (zone, bts_pocket). Markets: goals_nl | corners_nl | threeway.
-# Fields: line (float|None), hit (float), n (int), odd_col (str|None),
-#         optional provisional (bool).
-# Per-cell "signals" = display context; "gates" = HARD suppression rules:
-#   gates["cell_suppress_df"]    -> list of DF buckets that suppress the whole cell
-#   gates["corners_suppress_h2h"]-> list of h2h-corner values that suppress corners_nl
+# V3_MARKETS — 2-key (zone, bts). Market entries: goals_nl | corners_nl | threeway.
+# Non-market keys (composite, signals) are skipped by the emit loop.
 # ---------------------------------------------------------------------------
 V3_MARKETS: dict[tuple[str, str], dict[str, Any]] = {
 
-    # -- strong (corners natural O7.5) -------------------------------------
-    ("strong", "slight_over"): {
-        "goals_nl":   {"line": 1.5, "hit": 71.7, "n": 2935, "odd_col": _GL15},
-        "corners_nl": {"line": 7.5, "hit": 69.7, "n": 2278, "odd_col": _CL75},
-        "threeway":   {"line": None, "pick": _AOD, "hit": 69.4, "n": 2935, "odd_col": None},
+    ("strong", "over"): {
+        "goals_nl":   {"line": 1.5, "hit": 71.7, "n": 2941, "odd_col": _GL15},
+        "corners_nl": {"line": 7.5, "hit": 69.8, "n": 2281, "odd_col": _CL75},
+        "threeway":   {"line": None, "pick": _AOD, "hit": 69.4, "n": 2941, "odd_col": None},
+        "composite": 70.3,
+        "signals": {"spread": "display", "df": "display", "h2h_corner": "display"},
     },
-    ("strong", "slight_under"): {
-        "goals_nl":   {"line": 1.5, "hit": 66.8, "n": 4798, "odd_col": _GL15},
-        "corners_nl": {"line": 7.5, "hit": 67.6, "n": 3245, "odd_col": _CL75},
-        "threeway":   {"line": None, "pick": _AOD, "hit": 74.3, "n": 4798, "odd_col": None},
+    ("strong", "under"): {
+        "goals_nl":   {"line": 1.5, "hit": 66.7, "n": 4815, "odd_col": _GL15},
+        "corners_nl": {"line": 7.5, "hit": 67.6, "n": 3259, "odd_col": _CL75},
+        "threeway":   {"line": None, "pick": _AOD, "hit": 74.3, "n": 4815, "odd_col": None},
+        "composite": 69.5,
+        "signals": {"spread": "display",
+                    "df": {"threeway_tilt_on": "DF2", "df2_hit": 79.8},
+                    "h2h_corner": "display"},
     },
-    ("strong", "strong_under"): {
-        "goals_nl":   {"line": 1.5, "hit": 50.0, "n": 16, "odd_col": _GL15},
-        "corners_nl": {"line": 7.5, "hit": 71.4, "n": 14, "odd_col": _CL75, "provisional": True},
-        "threeway":   {"line": None, "pick": _AOD, "hit": 93.8, "n": 16, "odd_col": None},
-        "provisional": True,
+    ("standard", "over"): {
+        "goals_nl":   {"line": 1.5, "hit": 77.3, "n": 10996, "odd_col": _GL15},
+        "corners_nl": {"line": 8.5, "hit": 64.0, "n": 8382, "odd_col": _CL85},
+        "threeway":   {"line": None, "pick": _AOD, "hit": 72.7, "n": 10996, "odd_col": None},
+        "composite": 71.3,
+        "signals": {"spread": {"goals_override_on": "strong", "goals_hit": 83.8, "n": 876},
+                    "df": {"threeway_tilt_on": "DF2", "df2_hit": 78.2},
+                    "h2h_corner": "display"},
     },
-
-    # -- standard (corners natural O8.5) -----------------------------------
-    ("standard", "strong_over"): {
-        "goals_nl":   {"line": 1.5, "hit": 83.8, "n": 875, "odd_col": _GL15},
-        "corners_nl": {"line": 8.5, "hit": 68.3, "n": 758, "odd_col": _CL85},
-        "threeway":   {"line": None, "pick": _AOD, "hit": 67.3, "n": 875, "odd_col": None},
-        "gates": {"cell_suppress_df": ["DF0"], "corners_suppress_h2h": ["under"]},
+    ("standard", "under"): {
+        "goals_nl":   {"line": 1.5, "hit": 71.8, "n": 2062, "odd_col": _GL15},
+        "corners_nl": {"line": 8.5, "hit": 56.5, "n": 1412, "odd_col": _CL85},
+        "threeway":   {"line": None, "pick": _AOD, "hit": 81.5, "n": 2062, "odd_col": None},
+        "composite": 69.9,
+        "signals": {"spread": "display", "df": "display", "h2h_corner": "display"},
     },
-    ("standard", "slight_over"): {
-        "goals_nl":   {"line": 1.5, "hit": 76.8, "n": 10106, "odd_col": _GL15},
-        "corners_nl": {"line": 8.5, "hit": 63.6, "n": 7620, "odd_col": _CL85},
-        "threeway":   {"line": None, "pick": _AOD, "hit": 73.1, "n": 10106, "odd_col": None},
+    ("low", "over"): {
+        "goals_nl":   {"line": 1.5, "hit": 80.8, "n": 3147, "odd_col": _GL15},
+        "corners_nl": {"line": 8.5, "hit": 66.2, "n": 2740, "odd_col": _CL85},
+        "threeway":   {"line": None, "pick": _AOD, "hit": 79.9, "n": 3147, "odd_col": None},
+        "composite": 75.6,
+        "signals": {"spread": {"goals_override_on": "strong", "goals_hit": 85.0, "n": 642},
+                    "df": "display", "h2h_corner": "display"},
     },
-    ("standard", "slight_under"): {
-        "goals_nl":   {"line": 1.5, "hit": 71.7, "n": 2042, "odd_col": _GL15},
-        "corners_nl": {"line": 8.5, "hit": 56.8, "n": 1404, "odd_col": _CL85},
-        "threeway":   {"line": None, "pick": _AOD, "hit": 81.5, "n": 2042, "odd_col": None},
-        "gates": {"corners_suppress_h2h": ["under"]},
+    ("low", "under"): {
+        "goals_nl":   {"line": 1.5, "hit": 71.1, "n": 802, "odd_col": _GL15},
+        "corners_nl": {"line": 8.5, "hit": 55.8, "n": 565, "odd_col": _CL85},
+        "threeway":   {"line": None, "pick": _AOD, "hit": 88.4, "n": 802, "odd_col": None},
+        "composite": 71.8,
+        "signals": {"spread": "display", "df": "display", "h2h_corner": "display"},
     },
-    ("standard", "strong_under"): {
-        "goals_nl":   {"line": 1.5, "hit": 73.7, "n": 19, "odd_col": _GL15},
-        "corners_nl": {"line": 8.5, "hit": 12.5, "n": 8, "odd_col": _CL85, "provisional": True},
-        "threeway":   {"line": None, "pick": _AOD, "hit": 84.2, "n": 19, "odd_col": None},
-        "provisional": True,
+    ("one_sided", "over"): {
+        "goals_nl":   {"line": 1.5, "hit": 84.4, "n": 2435, "odd_col": _GL15},
+        "corners_nl": {"line": 8.5, "hit": 68.8, "n": 2279, "odd_col": _CL85},
+        "threeway":   {"line": None, "pick": _AOD, "hit": 88.1, "n": 2435, "odd_col": None},
+        "composite": 80.4,
+        "signals": {"spread": "display", "df": "display", "h2h_corner": "display"},
     },
-
-    # -- low (corners natural O8.5; clear favourite + draw protection) -----
-    ("low", "strong_over"): {
-        "goals_nl":   {"line": 1.5, "hit": 85.0, "n": 642, "odd_col": _GL15},
-        "corners_nl": {"line": 8.5, "hit": 71.3, "n": 606, "odd_col": _CL85},
-        "threeway":   {"line": None, "pick": _AOD, "hit": 74.0, "n": 642, "odd_col": None},
-        "gates": {"corners_suppress_h2h": ["under"]},
-    },
-    ("low", "slight_over"): {
-        "goals_nl":   {"line": 1.5, "hit": 79.7, "n": 2502, "odd_col": _GL15},
-        "corners_nl": {"line": 8.5, "hit": 64.8, "n": 2134, "odd_col": _CL85},
-        "threeway":   {"line": None, "pick": _AOD, "hit": 81.4, "n": 2502, "odd_col": None},
-    },
-    ("low", "slight_under"): {
-        "goals_nl":   {"line": 1.5, "hit": 71.4, "n": 783, "odd_col": _GL15},
-        "corners_nl": {"line": 8.5, "hit": 55.8, "n": 557, "odd_col": _CL85},
-        "threeway":   {"line": None, "pick": _AOD, "hit": 88.6, "n": 783, "odd_col": None},
-        "gates": {"corners_suppress_h2h": ["under"]},
-    },
-    ("low", "strong_under"): {
-        "goals_nl":   {"line": 1.5, "hit": 55.6, "n": 18, "odd_col": _GL15},
-        "corners_nl": {"line": 8.5, "hit": 42.9, "n": 7, "odd_col": _CL85, "provisional": True},
-        "threeway":   {"line": None, "pick": _AOD, "hit": 77.8, "n": 18, "odd_col": None},
-        "provisional": True,
-    },
-
-    # -- one_sided (corners natural O8.5; draw protection still wins) -------
-    ("one_sided", "strong_over"): {
-        "goals_nl":   {"line": 1.5, "hit": 89.2, "n": 212, "odd_col": _GL15},
-        "corners_nl": {"line": 8.5, "hit": 66.2, "n": 204, "odd_col": _CL85},
-        "threeway":   {"line": None, "pick": _AOD, "hit": 81.6, "n": 212, "odd_col": None},
-    },
-    ("one_sided", "slight_over"): {
-        "goals_nl":   {"line": 1.5, "hit": 83.9, "n": 2218, "odd_col": _GL15},
-        "corners_nl": {"line": 8.5, "hit": 69.1, "n": 2075, "odd_col": _CL85},
-        "threeway":   {"line": None, "pick": _AOD, "hit": 88.7, "n": 2218, "odd_col": None},
-    },
-    ("one_sided", "slight_under"): {
-        "goals_nl":   {"line": 1.5, "hit": 82.8, "n": 1307, "odd_col": _GL15},
-        "corners_nl": {"line": 8.5, "hit": 65.6, "n": 1146, "odd_col": _CL85},
-        "threeway":   {"line": None, "pick": _AOD, "hit": 94.2, "n": 1307, "odd_col": None},
-    },
-    ("one_sided", "strong_under"): {
-        # corners excluded: coverage n=29 < 30 -> not enough to even baseline
-        "goals_nl":   {"line": 1.5, "hit": 72.7, "n": 66, "odd_col": _GL15},
-        "threeway":   {"line": None, "pick": _AOD, "hit": 97.0, "n": 66, "odd_col": None},
-        "provisional": True,
+    ("one_sided", "under"): {
+        "goals_nl":   {"line": 1.5, "hit": 82.3, "n": 1373, "odd_col": _GL15},
+        "corners_nl": {"line": 8.5, "hit": 65.1, "n": 1175, "odd_col": _CL85},
+        "threeway":   {"line": None, "pick": _AOD, "hit": 94.3, "n": 1373, "odd_col": None},
+        "composite": 80.6,
+        "signals": {"spread": "display", "df": "display", "h2h_corner": "display"},
     },
 }
 
-# Active pick set (alias; low zone stays active).
 V3_ACTIVE: dict[tuple[str, str], dict[str, Any]] = {
     k: v for k, v in V3_MARKETS.items()
     if not (LOW_ZONE_SUPPRESS and k[0] == "low")
 }
 
-
-def _threeway_hit(cell: dict[str, Any]) -> float:
-    tw = cell.get("threeway")
-    return tw["hit"] if tw else 0.0
-
-
-def _composite(cell: dict[str, Any]) -> float:
-    """Mean of the cell's market hit-rates (display headline)."""
-    hits = [m["hit"] for k, m in cell.items()
-            if isinstance(m, dict) and "hit" in m and k in ("goals_nl", "corners_nl", "threeway")]
-    return round(sum(hits) / len(hits), 1) if hits else 0.0
+# Market keys (everything else in a cell dict — composite, signals — is metadata).
+MARKET_KEYS = ("goals_nl", "corners_nl", "threeway")
 
 
 # ---------------------------------------------------------------------------
-# PROMOTED_CELLS — display + inspector metadata (2-key).
-# Required fields: zone, bts_pocket, threeway_hit, threeway_pick, gn_hit, cn_hit,
-#   n_fixtures, cell_promoted, promote_status, composite, provisional.
+# PROMOTED_CELLS — display + inspector metadata (2-key). bts_pocket holds the
+# over/under value (v4 cell axis) for back-compat with route field names.
 # ---------------------------------------------------------------------------
 PROMOTED_CELLS: dict[tuple[str, str], dict[str, Any]] = {}
 for (_z, _b), _cell in V3_ACTIVE.items():
-    _gn = _cell.get("goals_nl")
-    _cn = _cell.get("corners_nl")
-    _tw = _cell.get("threeway")
+    _gn, _cn, _tw = _cell["goals_nl"], _cell["corners_nl"], _cell["threeway"]
     PROMOTED_CELLS[(_z, _b)] = {
         "zone": _z, "bts_pocket": _b,
         "cell_promoted": True,
-        "threeway_hit": _tw["hit"] if _tw else 0.0,
-        "threeway_pick": _tw["pick"] if _tw else _AOD,
-        "gn_hit": _gn["hit"] if _gn else 0.0,
-        "cn_hit": _cn["hit"] if _cn else 0.0,
-        "n_fixtures": _tw["n"] if _tw else (_gn["n"] if _gn else 0),
-        "composite": _composite(_cell),
-        "promote_status": "PROVISIONAL" if _cell.get("provisional") else "PASS",
-        "provisional": bool(_cell.get("provisional")),
+        "threeway_hit": _tw["hit"], "threeway_pick": _tw["pick"],
+        "gn_hit": _gn["hit"], "cn_hit": _cn["hit"],
+        "n_fixtures": _tw["n"],
+        "composite": _cell["composite"],
+        "promote_status": "PASS",
+        "provisional": False,
     }
