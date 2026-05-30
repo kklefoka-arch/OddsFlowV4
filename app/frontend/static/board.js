@@ -15,7 +15,10 @@ const state = {
   days: 3, search: '', minhit: 0,
   sel: {}, group: 'fixture', sort: 'composite', signals: true, compact: false,
 };
-let RAW = [];  // grouped fixtures
+let RAW = [];      // grouped picks fixtures (picks + log views)
+let RESULTS = [];  // settled fixtures (results view)
+let PERF = null;   // emit_market_breakdown (performance view)
+state.view = 'picks';
 
 const $ = (id) => document.getElementById(id);
 const compClass = (h) => h == null ? '' : h >= 74 ? 'hi' : h >= 66 ? 'mid' : 'lo';
@@ -38,7 +41,7 @@ function buildChips() {
       b.onclick = () => {
         if (state.sel[key].has(v)) { state.sel[key].delete(v); b.classList.remove('on'); }
         else { state.sel[key].add(v); b.classList.add('on'); }
-        render();
+        renderCurrent();
       };
       box.appendChild(b);
     });
@@ -71,7 +74,7 @@ async function load() {
     $('bd-status').textContent = 'error'; $('bd-results').innerHTML = `<div class="bd-empty">Error: ${e}</div>`;
     return;
   }
-  render();
+  renderCurrent();
 }
 
 // ---- filter + render ----
@@ -192,23 +195,141 @@ function renderByMarket(res, fixtures) {
   res.innerHTML = html || '<div class="bd-empty">No picks match these filters.</div>';
 }
 
+// ===== view dispatch =====
+function renderCurrent() {
+  const v = state.view;
+  if (v === 'results') return renderResults();
+  if (v === 'performance') return renderPerformance();
+  if (v === 'log') return renderLog();
+  return render();   // picks
+}
+async function loadView() {
+  const v = state.view;
+  $('bd-filters').classList.toggle('hidden', v === 'performance' || v === 'log');
+  if (v === 'results') return loadResults();
+  if (v === 'performance') return loadPerformance();
+  if (!RAW.length) return load();   // picks + log share RAW; load() ends in renderCurrent()
+  return renderCurrent();
+}
+function refreshCurrent() {
+  const v = state.view;
+  if (v === 'results') return loadResults();
+  if (v === 'performance') return loadPerformance();
+  return load();
+}
+
+// ===== Results view (authoritative: /api/results — true settled outcomes) =====
+async function loadResults() {
+  $('bd-status').textContent = 'loading…';
+  try {
+    const d = await (await fetch(`/api/results?days=${Math.max(state.days, 7)}`)).json();
+    RESULTS = (d.fixtures || []).map(f => ({
+      ...f, bts: (f.bts_pocket || '').includes('over') ? 'over'
+              : (f.bts_pocket || '').includes('under') ? 'under' : null,
+    }));
+    $('bd-status').textContent = `${RESULTS.length} settled · ${d.window_days}d`;
+  } catch (e) { $('bd-status').textContent = 'error'; }
+  renderResults();
+}
+function renderResults() {
+  const res = $('bd-results'); res.classList.toggle('compact', state.compact);
+  const s = state.sel;
+  let fx = RESULTS.filter(f => {
+    if (f.draw_zone && !s.zone.has(f.draw_zone)) return false;
+    if (f.bts && !s.bts.has(f.bts)) return false;
+    if (f.tier != null && !s.tier.has(String(f.tier))) return false;
+    if (state.search && !`${f.home_team} ${f.away_team} ${f.league}`.toLowerCase().includes(state.search.toLowerCase())) return false;
+    return (f.picks || []).length;
+  });
+  fx.sort((a, b) => (b.date || '').localeCompare(a.date || ''));
+  const np = fx.reduce((a, f) => a + f.picks.length, 0);
+  const wins = fx.reduce((a, f) => a + f.picks.filter(p => p.outcome === 'WIN').length, 0);
+  const settled = fx.reduce((a, f) => a + f.picks.filter(p => ['WIN', 'LOSS', 'VOID'].includes(p.outcome)).length, 0);
+  const hr = settled ? Math.round((wins + fx.reduce((a, f) => a + f.picks.filter(p => p.outcome === 'VOID').length, 0)) / settled * 1000) / 10 : 0;
+  $('bd-summary').innerHTML = `<span><b>${fx.length}</b> settled fixtures</span><span><b>${np}</b> picks</span><span>non-loss <b>${hr}%</b></span><span class="lg">true settled outcomes</span>`;
+  if (!fx.length) { res.innerHTML = '<div class="bd-empty">No settled results match these filters.</div>'; return; }
+  res.innerHTML = fx.map(f => {
+    const rows = (f.picks || []).map(p => {
+      const oc = p.outcome === 'WIN' ? 'win' : p.outcome === 'LOSS' ? 'loss' : p.outcome === 'VOID' ? 'void' : '';
+      const m = p.outcome === 'WIN' ? '✓' : p.outcome === 'LOSS' ? '✗' : p.outcome === 'VOID' ? '∅' : '·';
+      return `<div class="pk"><span class="pk-name"><span class="oc ${oc}">${m}</span> ${MKT_LABEL[p.market] || p.market}: ${p.pick}</span>
+              <span class="pk-hit">${p.pick_odd ? '@' + p.pick_odd : ''}</span></div>`;
+    }).join('');
+    return `<div class="card"><div class="card-h">
+      <div class="card-l"><div class="teams">${f.home_team} <span class="vs">v</span> ${f.away_team}</div>
+        <div class="kick">🕑 ${fmtTime(f.date)}</div><div class="lg">${f.league || ''} · ${f.country || ''} · T${f.tier ?? '?'}</div></div>
+      <div class="card-r"><div class="score">${f.home_score}-${f.away_score}</div>
+        <span class="pill-bts ${f.bts || ''}">${f.draw_zone || ''} ${f.bts || ''}</span></div>
+      </div>${rows}</div>`;
+  }).join('');
+}
+
+// ===== Performance view (authoritative: /reports/emit_market_breakdown) =====
+async function loadPerformance() {
+  $('bd-status').textContent = 'loading…';
+  try { PERF = await (await fetch('/reports/emit_market_breakdown?days=90')).json(); $('bd-status').textContent = 'performance · 90d'; }
+  catch (e) { $('bd-status').textContent = 'error'; }
+  renderPerformance();
+}
+const hc = (h) => h == null ? '' : h >= 66 ? 'hi' : h >= 58 ? 'mid' : 'lo';
+function renderPerformance() {
+  const res = $('bd-results'); res.classList.remove('compact');
+  if (!PERF) { res.innerHTML = '<div class="bd-empty">Loading…</div>'; return; }
+  $('bd-summary').innerHTML = `<span>settled-pick performance · window <b>${PERF.window_days || 90}d</b></span><span class="lg">these are the engine's own settled hit-rates — single source of truth</span>`;
+  const ms = PERF.markets_summary || [];
+  let html = '<div class="psec">Per-market (settled)</div>';
+  html += '<table class="ptab"><thead><tr><th>Market</th><th>n</th><th>W</th><th>L</th><th>V</th><th>Hit %</th><th>Baseline</th><th>Δ pp</th></tr></thead><tbody>';
+  html += ms.map(m => `<tr><td>${MKT_LABEL[m.market] || m.market}</td><td class="num">${m.n}</td><td class="num">${m.wins}</td><td class="num">${m.losses}</td><td class="num">${m.voids}</td><td class="num ${hc(m.hit_rate)}">${m.hit_rate ?? '—'}</td><td class="num">${m.baseline_hit ?? '—'}</td><td class="num">${m.vs_baseline_pp ?? '—'}</td></tr>`).join('');
+  html += '</tbody></table>';
+  const cells = (PERF.cells || []).slice().sort((a, b) => (a.partition_key || '').localeCompare(b.partition_key || ''));
+  html += '<div class="psec">Per-cell (settled, by market)</div><div class="psub">' + cells.length + ' cells with settled picks in the window</div>';
+  html += '<table class="ptab"><thead><tr><th>Cell</th><th>Market</th><th>n</th><th>Hit %</th></tr></thead><tbody>';
+  cells.forEach(c => (c.markets || []).forEach((m, i) => {
+    html += `<tr><td>${i === 0 ? c.partition_key : ''}</td><td>${MKT_LABEL[m.market] || m.market}</td><td class="num">${m.n}</td><td class="num ${hc(m.hit_rate)}">${m.hit_rate ?? '—'}</td></tr>`;
+  }));
+  html += '</tbody></table>';
+  res.innerHTML = html;
+}
+
+// ===== Picks-Log view (3 configs, legs only — no EV) =====
+function renderLog() {
+  const res = $('bd-results'); res.classList.remove('compact');
+  const fixtures = RAW.filter(passes);
+  $('bd-summary').innerHTML = `<span><b>${fixtures.length}</b> fixtures · 3 configs each</span><span class="lg">legs only — EV/economics not introduced until validated</span>`;
+  if (!fixtures.length) { res.innerHTML = '<div class="bd-empty">No picks in window.</div>'; return; }
+  res.innerHTML = fixtures.map(fx => {
+    const g = fx.markets.goals_nl, c = fx.markets.corners_nl, t = fx.markets.threeway;
+    const gN = g ? g.line : null, cN = c ? c.line : null;
+    const alpha = t ? String(t.pick || '').replace(/ or Draw$/, '') : 'Fav';
+    const L = (b, a) => b != null ? `O${(b + a).toFixed(1)}` : '—';
+    const col = (h, ga, ca, tw, note) => `<div class="cfgcol"><h5>${h}</h5><div>Goals ${L(gN, ga)}</div><div>Corners ${cN != null ? L(cN, ca) : '—'}</div><div>${tw}</div><div class="cfgnote">${note}</div></div>`;
+    return `<div class="card"><div class="card-l"><div class="teams">${fx.home} <span class="vs">v</span> ${fx.away}</div>
+      <div class="kick">🕑 ${fmtTime(fx.kickoff)}</div><div class="lg">${fx.league || ''} · ${fx.zone} ${fx.bts}</div></div>
+      <div class="cfg">${col('Most-likely', 0, 0, `${alpha} or Draw`, 'natural · protected')}${col('Mean', 1, 1, `${alpha} or Draw`, '1-up')}${col('Optimistic', 2, 2, `${alpha} win`, '2-up · straight win')}</div></div>`;
+  }).join('');
+}
+
 // ---- wire controls ----
 function seg(id, key) {
   $(id).querySelectorAll('button').forEach(b => b.onclick = () => {
     $(id).querySelectorAll('button').forEach(x => x.classList.remove('on'));
-    b.classList.add('on'); state[key] = b.dataset.v; render();
+    b.classList.add('on'); state[key] = b.dataset.v; renderCurrent();
   });
 }
 function init() {
   buildChips();
   seg('t-group', 'group'); seg('t-sort', 'sort');
+  $('bd-nav').querySelectorAll('button').forEach(b => b.onclick = () => {
+    $('bd-nav').querySelectorAll('button').forEach(x => x.classList.toggle('on', x === b));
+    state.view = b.dataset.view; loadView();
+  });
   $('f-days').oninput = (e) => { state.days = +e.target.value || 3; };
-  $('f-days').onchange = load;
-  $('f-search').oninput = (e) => { state.search = e.target.value; render(); };
-  $('f-minhit').oninput = (e) => { state.minhit = +e.target.value; $('f-minhit-v').textContent = e.target.value; render(); };
-  $('t-signals').onchange = (e) => { state.signals = e.target.checked; render(); };
-  $('t-compact').onchange = (e) => { state.compact = e.target.checked; render(); };
-  $('f-refresh').onclick = load;
+  $('f-days').onchange = refreshCurrent;
+  $('f-search').oninput = (e) => { state.search = e.target.value; renderCurrent(); };
+  $('f-minhit').oninput = (e) => { state.minhit = +e.target.value; $('f-minhit-v').textContent = e.target.value; renderCurrent(); };
+  $('t-signals').onchange = (e) => { state.signals = e.target.checked; renderCurrent(); };
+  $('t-compact').onchange = (e) => { state.compact = e.target.checked; renderCurrent(); };
+  $('f-refresh').onclick = refreshCurrent;
   $('f-reset').onclick = () => { location.reload(); };
 
   // recent-results-for-similar-odds: expand a card to the cell's recent settled results
@@ -235,6 +356,6 @@ function init() {
     box.style.display = 'block'; box.dataset.open = '1'; btn.textContent = 'recent in this cell ▴';
   });
 
-  load();
+  loadView();
 }
 init();

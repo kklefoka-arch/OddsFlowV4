@@ -17,6 +17,28 @@ body{margin:0;background:var(--bg);color:var(--ink);font-family:Nunito,system-ui
 .bd-link:hover{color:var(--accent)}
 .bd-chip{background:var(--panel2);border:1px solid var(--line);border-radius:20px;padding:3px 11px;font-size:12px;color:var(--muted)}
 
+.bd-nav{display:flex;gap:2px;padding:6px 18px 0;background:var(--panel);position:sticky;top:53px;z-index:16}
+.bd-nav button{background:transparent;border:0;border-bottom:2px solid transparent;color:var(--muted);padding:8px 16px;cursor:pointer;font-size:14px;font-weight:700}
+.bd-nav button.on{color:var(--accent);border-bottom-color:var(--accent)}
+.bd-nav button:hover{color:var(--ink)}
+.bd-filters.hidden{display:none}
+.ptab{grid-column:1/-1;width:100%;border-collapse:collapse;font-size:13px;margin-bottom:18px}
+.ptab th,.ptab td{text-align:right;padding:6px 10px;border-bottom:1px solid var(--line)}
+.ptab th:first-child,.ptab td:first-child{text-align:left}
+.ptab th{color:var(--muted);font-size:11px;text-transform:uppercase;letter-spacing:.4px}
+.ptab tbody tr:hover{background:var(--panel2)}
+.ptab .num{font-family:'JetBrains Mono',monospace}
+.ptab .hi{color:var(--good)} .ptab .mid{color:var(--mid)} .ptab .lo{color:var(--bad)}
+.psec{grid-column:1/-1;font-weight:800;color:var(--accent);font-size:13px;text-transform:uppercase;letter-spacing:.5px;margin:6px 0 8px}
+.psub{grid-column:1/-1;color:var(--muted);font-size:12px;margin:-4px 0 8px}
+.oc{font-weight:800;width:16px;display:inline-block;text-align:center}
+.oc.win{color:var(--good)} .oc.loss{color:var(--bad)} .oc.void{color:var(--mid)}
+.score{font-family:'JetBrains Mono',monospace;font-weight:800}
+.cfg{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:8px}
+.cfgcol{border:1px solid var(--line);border-radius:6px;padding:7px 9px}
+.cfgcol h5{margin:0 0 5px;font-size:11px;color:var(--accent);text-transform:uppercase;letter-spacing:.4px}
+.cfgcol div{font-size:12px;padding:1px 0}
+.cfgnote{font-size:10px;color:var(--muted);margin-top:4px}
 .bd-filters{padding:12px 18px;background:var(--panel);border-bottom:1px solid var(--line);position:sticky;top:53px;z-index:15}
 .bd-row{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-bottom:8px}
 .bd-row:last-child{margin-bottom:0}
