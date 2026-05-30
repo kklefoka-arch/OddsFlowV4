@@ -24,6 +24,7 @@
 
 <nav class="tabs">
   <button class="tab active" data-tab="picks">Picks</button>
+  <button class="tab" data-tab="pickslog">Picks Log</button>
   <button class="tab" data-tab="upcoming">Upcoming</button>
   <button class="tab" data-tab="analysis">Analysis</button>
   <button class="tab" data-tab="inspector">Inspector</button>
@@ -50,6 +51,24 @@
     <div id="picks-prx9" class="prx9-panel"></div>
   </section>
 
+  <!-- ============ PICKS LOG (advanced three-picks layer — legs only, v1) ============ -->
+  <section id="pickslog" class="panel">
+    <div class="panel-header">
+      <h2>Picks Log <span class="muted" style="font-size:0.8em">— advanced layer (72h)</span></h2>
+      <div class="controls">
+        <label>Days: <input type="number" id="pickslog-days" value="3" min="1" max="3"></label>
+        <button id="pickslog-refresh">Refresh</button>
+      </div>
+    </div>
+    <p class="muted">Built on the back of the ground-zero natural emits (golden rule). Three
+      configurations per fixture — <strong>Most-likely</strong> (natural lines, protected:
+      draw void / stake returned), <strong>Mean</strong> (1-up lines, system bets e.g. 6-of-9),
+      <strong>Optimistic</strong> (2-up lines + straight-win, system bets e.g. 3-of-6).
+      <em>Legs only (v1) — EV / economic modelling lands here in a later pass.</em></p>
+    <div id="pickslog-summary" class="summary"></div>
+    <div id="pickslog-list" class="cards"></div>
+  </section>
+
   <!-- ============ UPCOMING ============ -->
   <section id="upcoming" class="panel">
     <div class="panel-header">
@@ -67,7 +86,7 @@
         <button id="upcoming-refresh">Refresh</button>
       </div>
     </div>
-    <p class="muted">All classified fixtures. ★ PROMOTE = (zone × DF × BTS pocket) cell in V3.2 active policy.</p>
+    <p class="muted">All classified fixtures. ★ PROMOTE = (zone × BTS pocket) cell in the ground-zero policy. DF + H2H-corner are signals, not cell axes.</p>
     <div id="upcoming-summary" class="summary"></div>
     <div id="upcoming-list" class="cards"></div>
   </section>
@@ -80,12 +99,12 @@
         <button id="analysis-refresh">Refresh</button>
       </div>
     </div>
-    <p class="muted">Hit rates per (zone × DF × BTS pocket) cell from all settled fixtures. Live V3.2 engine result (Session 23c — Rule 1 overridden, no Wilson, no EV).</p>
+    <p class="muted">Hit rates per (zone × BTS pocket) cell from all settled fixtures. Ground-zero engine — natural lines, alpha-or-draw 3-way. DF + H2H are signals. Tier split T1+T2 vs T3. No Wilson, no EV.</p>
     <div id="analysis-summary" class="summary"></div>
     <div class="analysis-subtabs">
       <button class="btn-subtab active" data-tier="all">ALL</button>
-      <button class="btn-subtab" data-tier="t1">T1</button>
-      <button class="btn-subtab" data-tier="t2t3">T2+T3</button>
+      <button class="btn-subtab" data-tier="t1t2">T1+T2</button>
+      <button class="btn-subtab" data-tier="t3">T3</button>
     </div>
     <div id="analysis-table-wrap"></div>
   </section>

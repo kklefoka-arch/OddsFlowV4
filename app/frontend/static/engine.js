@@ -791,7 +791,8 @@ function renderZoneMarket(rows) {
     el.innerHTML = '<div class="empty">No settled emits in window.</div>';
     return;
   }
-  // V3.2: rows are per (zone, df, market). Render DF column when present.
+  // Re-Foundation: rows are per (zone, market). DF column only renders for any
+  // legacy rows that still carry df (none under the 2-key engine).
   const hasDf = rows.some(r => r.df);
   const tr = rows.map(r => {
     const dCls = r.vs_baseline_pp == null ? '' :
@@ -1542,11 +1543,73 @@ async function loadInspectorDrift(days) {
   }
 }
 
+// ---- Picks Log (advanced three-picks layer — legs only, v1) ----
+// Derives Most-likely / Mean / Optimistic configs from the ground-zero natural
+// emits (/picks). No EV / odds combination yet — structures only (golden rule).
+async function loadPicksLog() {
+  const summary = document.getElementById('pickslog-summary');
+  const list = document.getElementById('pickslog-list');
+  const days = Math.min(3, Number(document.getElementById('pickslog-days')?.value) || 3);
+  summary.innerHTML = '';
+  list.innerHTML = '<div class="muted">Loading…</div>';
+  try {
+    const r = await fetch(`/picks?days=${days}`);
+    const body = await r.json();
+    const picks = body.picks || [];
+    const byFix = new Map();
+    for (const p of picks) {
+      if (!byFix.has(p.fixture_id)) byFix.set(p.fixture_id, { info: p, legs: {} });
+      byFix.get(p.fixture_id).legs[p.market] = p;
+    }
+    summary.innerHTML =
+      `<div class="summary-item"><span class="summary-label">Fixtures</span><span class="summary-value">${byFix.size}</span></div>
+       <div class="summary-item"><span class="summary-label">Window</span><span class="summary-value">${days}d</span></div>`;
+    if (!byFix.size) { list.innerHTML = '<div class="empty">No ground-zero picks in window.</div>'; return; }
+
+    const ln = (base, add) => (base != null ? `O${(base + add).toFixed(1)}` : '—');
+    const kdt = s => (s || '').replace('T', ' ').slice(0, 16);
+    const colStyle = 'border:1px solid #2a3344;border-radius:6px;padding:6px 8px';
+    const cards = [];
+    for (const { info, legs } of byFix.values()) {
+      const g = legs.goals_nl, c = legs.corners_nl, t = legs.threeway;
+      const gNat = g ? g.line : null;
+      const cNat = c ? c.line : null;
+      const alpha = t ? String(t.pick || '').replace(/ or Draw$/, '') : 'Favourite';
+      const col = (title, gAdd, cAdd, tw, note) => `
+        <div style="${colStyle}">
+          <div style="font-weight:700;margin-bottom:4px">${title}</div>
+          <div>Goals ${ln(gNat, gAdd)}</div>
+          <div>Corners ${cNat != null ? ln(cNat, cAdd) : '<span class="muted">—</span>'}</div>
+          <div>${tw}</div>
+          <div class="muted" style="font-size:0.74em;margin-top:4px">${note}</div>
+        </div>`;
+      const dfChip = info.df ? `<span class="chip muted">${info.df}</span>` : '';
+      const h2hChip = (info.h2h_corner && info.h2h_corner !== 'none')
+        ? `<span class="chip muted">h2h ${info.h2h_corner}</span>` : '';
+      cards.push(`
+        <div class="card">
+          <div><strong>${info.home_team || ''} vs ${info.away_team || ''}</strong>
+            <span class="chip">${info.partition_key || ''}</span> ${dfChip} ${h2hChip}</div>
+          <div class="muted" style="margin:2px 0 6px">${info.league || ''} · ${kdt(info.kickoff_utc)}</div>
+          <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px">
+            ${col('Most-likely', 0, 0, `${alpha} or Draw`, 'protected · draw void / stake returned · accumulator')}
+            ${col('Mean', 1, 1, `${alpha} or Draw`, '1-up · system bet (e.g. 6-of-9)')}
+            ${col('Optimistic', 2, 2, `${alpha} win`, '2-up · straight win · system (3-of-6)')}
+          </div>
+        </div>`);
+    }
+    list.innerHTML = cards.join('');
+  } catch (e) {
+    list.innerHTML = `<div class="empty">Error: ${e}</div>`;
+  }
+}
+
 // ---- Tab loader dispatch ----
 function loadTab(name) {
   if (name !== 'results') stopLivePolling();
   if (name === 'today')      loadToday();
   else if (name === 'picks')     loadPicks();
+  else if (name === 'pickslog')  loadPicksLog();
   else if (name === 'upcoming')  loadUpcoming();
   else if (name === 'analysis')  loadAnalysis();
   else if (name === 'inspector') loadInspector();
@@ -1567,6 +1630,8 @@ function syncPicksCsv() {
 picksDaysInput.addEventListener('input', syncPicksCsv);
 syncPicksCsv();
 document.getElementById('analysis-refresh').addEventListener('click', loadAnalysis);
+const _pickslogRefresh = document.getElementById('pickslog-refresh');
+if (_pickslogRefresh) _pickslogRefresh.addEventListener('click', loadPicksLog);
 document.querySelectorAll('.btn-subtab').forEach(btn => {
   btn.addEventListener('click', () => {
     if (!_foundationData) return;
