@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>OddsFlow — Picks Board</title>
+  <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800&family=JetBrains+Mono:wght@500&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/static/board.css">
+</head>
+<body>
+<header class="bd-top">
+  <div class="bd-brand"><span class="bd-logo">OF</span> Picks Board <span class="bd-v">v4</span></div>
+  <div class="bd-top-right">
+    <span id="bd-status" class="bd-chip">loading…</span>
+    <a class="bd-link" href="/engine">operator view →</a>
+  </div>
+</header>
+
+<section class="bd-filters">
+  <div class="bd-row">
+    <label class="bd-ctl">Days
+      <input type="number" id="f-days" value="3" min="1" max="14">
+    </label>
+    <label class="bd-ctl bd-search">Search
+      <input type="text" id="f-search" placeholder="team or league…">
+    </label>
+    <label class="bd-ctl">Min hit %
+      <input type="range" id="f-minhit" min="0" max="95" value="0" step="5">
+      <span id="f-minhit-v" class="bd-mono">0</span>
+    </label>
+    <button id="f-reset" class="bd-btn-ghost">reset</button>
+    <button id="f-refresh" class="bd-btn">refresh</button>
+  </div>
+
+  <div class="bd-row bd-chips" id="g-zone"  data-label="Zone"></div>
+  <div class="bd-row bd-chips" id="g-bts"   data-label="BTS"></div>
+  <div class="bd-row bd-chips" id="g-tier"  data-label="Tier"></div>
+  <div class="bd-row bd-chips" id="g-market" data-label="Market"></div>
+  <div class="bd-row bd-chips" id="g-spread" data-label="Spread (signal)"></div>
+  <div class="bd-row bd-chips" id="g-h2h"   data-label="H2H corner (signal)"></div>
+  <div class="bd-row bd-chips" id="g-df"    data-label="DF (signal)"></div>
+
+  <div class="bd-row bd-toggles">
+    <span class="bd-tg-label">Group</span>
+    <div class="bd-seg" id="t-group">
+      <button data-v="fixture" class="on">by fixture</button>
+      <button data-v="cell">by cell</button>
+      <button data-v="market">by market</button>
+    </div>
+    <span class="bd-tg-label">Sort</span>
+    <div class="bd-seg" id="t-sort">
+      <button data-v="composite" class="on">hit ↓</button>
+      <button data-v="kickoff">kickoff</button>
+    </div>
+    <label class="bd-switch"><input type="checkbox" id="t-signals" checked> signals</label>
+    <label class="bd-switch"><input type="checkbox" id="t-compact"> compact</label>
+  </div>
+</section>
+
+<section id="bd-summary" class="bd-summary"></section>
+<main id="bd-results" class="bd-results"></main>
+
+<footer class="bd-foot">OddsFlow v4 · hit-rate only · picks fire from the 8-cell (zone × over/under) policy · signals: spread · DF · H2H-corner</footer>
+<script src="/static/board.js"></script>
+</body>
+</html>

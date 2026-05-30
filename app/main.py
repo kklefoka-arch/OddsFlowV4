@@ -75,6 +75,12 @@ async def spa(request: Request) -> HTMLResponse:
     return _templates.TemplateResponse("engine_view.html", {"request": request})
 
 
+# ---- Board: clean user-facing picks board (v4 Project-3 surface) ----
+@app.get("/board", response_class=HTMLResponse, include_in_schema=False)
+async def board(request: Request) -> HTMLResponse:
+    return _templates.TemplateResponse("board.html", {"request": request})
+
+
 # ---- Static files ----
 _static_dir = Path(__file__).parent / "frontend" / "static"
 if _static_dir.exists():
