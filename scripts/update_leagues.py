@@ -14,8 +14,10 @@ DB = r"C:\OddsFlowV4\data\oddsflow_v4.db"
 
 # Complete league subscription from API provider.
 # Format: (sportmonks_id, country, name, tier)
+# Re-Foundation (2026-05-30) — country-context tiers (T1 = top flight of its
+# country; T2 = division directly below; T3 = rest + cups). Split: T1+T2 vs T3.
 LEAGUES = [
-    # T1 — top-flight leagues
+    # T1 — top flight of its country
     (573,  "Sweden",              "Allsvenskan",                 1),
     (444,  "Norway",              "Eliteserien",                 1),
     (345,  "Iceland",             "Besta deild",                 1),
@@ -25,30 +27,30 @@ LEAGUES = [
     (648,  "Brazil",              "Serie A",                     1),
     (3537, "Japan",               "J1 100 Year Vision League",   1),
     (1034, "South Korea",         "K League 1",                  1),
-    # T2 — second-tier / strong regional leagues
-    (393,  "Kazakhstan",          "Premier League",              2),
-    (405,  "Lithuania",           "A Lyga",                      2),
+    (989,  "China",               "Super League",                1),  # was T2
+    (1098, "Bolivia",             "Liga De Futbol Prof",         1),  # was T3
+    (696,  "Ecuador",             "Liga Pro",                    1),  # was T2
+    (1689, "Canada",              "Premier League",              1),  # was T2
+    (286,  "Estonia",             "Meistriliiga",                1),  # was T2
+    (393,  "Kazakhstan",          "Premier League",              1),  # was T2
+    (405,  "Lithuania",           "A Lyga",                      1),  # was T2
+    # T2 — division directly below the top flight
     (579,  "Sweden",              "Superettan",                  2),
-    (585,  "Sweden",              "Ettan: North",                2),
-    (588,  "Sweden",              "Ettan: South",                2),
-    (681,  "Colombia",            "Copa Colombia",               2),
     (678,  "Colombia",            "Primera B",                   2),
-    (696,  "Ecuador",             "Liga Pro",                    2),
-    (1689, "Canada",              "Premier League",              2),
     (295,  "Finland",             "Ykköseliga",                  2),
-    (286,  "Estonia",             "Meistriliiga",                2),
     (289,  "Estonia",             "Esiliiga A",                  2),
     (791,  "United States",       "USL Championship",            2),
     (3550, "Japan",               "J2/J3 100 Year Vision League",2),
-    (989,  "China",               "Super League",                2),
-    # T3 — lower tiers / development leagues
+    # T3 — lower tiers + cups
     # (797 USL League Two removed 2026-05-29 — operator dropped from API subscription.
     #  DB row in `leagues` table kept for historical fixture FK integrity.)
     (1642, "Argentina",           "Reserve League",              3),
     (351,  "Iceland",             "2. Deild",                    3),
     (1607, "United States",       "USL League One",              3),
     (2545, "United States",       "MLS Next Pro",                3),
-    (1098, "Bolivia",             "Liga De Futbol Prof",         3),
+    (585,  "Sweden",              "Ettan: North",                3),  # was T2 (3rd tier)
+    (588,  "Sweden",              "Ettan: South",                3),  # was T2 (3rd tier)
+    (681,  "Colombia",            "Copa Colombia",               3),  # was T2 (cup)
 ]
 
 

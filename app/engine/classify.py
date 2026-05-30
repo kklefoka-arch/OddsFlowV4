@@ -3,9 +3,11 @@
 Maps draw_odd → draw_zone, (btts_yes_odd, btts_no_odd) → bts_pocket,
 and (home_odd, away_odd) → DF bucket.
 
-Session 23c (2026-05-29) — Durable Rule 1 overridden by operator decision.
-DF re-introduced as a partition axis. The partition is now 3-key
-``(zone, df, bts_pocket)``. No Wilson, no EV anywhere in this module.
+Re-Foundation (2026-05-30) — Durable Rule 1 re-pinned: the partition is again
+2-key ``(zone, bts_pocket)``. ``df_of`` still computes the DF bucket, but DF is
+now a SIGNAL (confidence chip + the few hard gates in static_policy), NOT a
+partition axis. The H2H-corner count is the other qualifying signal. No Wilson,
+no EV anywhere in this module.
 """
 
 from __future__ import annotations

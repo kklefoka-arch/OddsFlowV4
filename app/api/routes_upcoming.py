@@ -83,7 +83,7 @@ def upcoming(
         zone = clf.get("zone")
         bts = clf.get("bts_pocket")
         df = clf.get("df")
-        partition_promoted = bool(zone and bts and df and (zone, df, bts) in promoted_keys)
+        partition_promoted = bool(zone and bts and (zone, bts) in promoted_keys)
 
         tier_key = str(d.get("league_tier") or d.get("tier") or "")
         if tier_key:

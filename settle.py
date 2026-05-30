@@ -3,7 +3,8 @@
 Run after fetch_results.py whenever fixture scores may have updated.
 Writes unsettled emit_log rows (where fixture has a result) to pick_results.
 
-Markets handled: dnb, alpha_win, goals_nl, corners_nl.
+Markets handled: threeway (alpha-or-draw, no void), goals_nl, corners_nl,
+plus legacy dnb / alpha_win for emit_log rows predating the Re-Foundation.
 """
 import re
 import sqlite3
@@ -33,15 +34,19 @@ def settle_pick(market: str, home_score, away_score, home_odd, away_odd,
             return None
         return 1.0 if total_corners > line else 0.0
 
-    if market in ("dnb", "alpha_win"):
+    if market in ("threeway", "dnb", "alpha_win"):
         if home_odd is None or away_odd is None:
             return None
         alpha_home = home_odd <= away_odd
         alpha_wins = (home_score > away_score) if alpha_home else (away_score > home_score)
         draw = (home_score == away_score)
+        # threeway = ground-zero "alpha-or-draw": a draw is a protected WIN (no 0.5 void).
+        if market == "threeway":
+            return 1.0 if (alpha_wins or draw) else 0.0
+        # legacy markets (pre-Re-Foundation emit_log rows still pending):
         if market == "dnb":
             return 1.0 if alpha_wins else (0.5 if draw else 0.0)
-        return 1.0 if alpha_wins else 0.0
+        return 1.0 if alpha_wins else 0.0   # legacy alpha_win
 
     return None
 

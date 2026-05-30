@@ -6,12 +6,16 @@ Each zone maps to (natural_line, system_line) per market.
 
 from __future__ import annotations
 
-# (natural_line, system_line) per zone per market
+# (natural_line, system_line) per zone per market.
+# Re-Foundation (2026-05-30): natural lines revised from the line sweep
+# (Output/NATURAL_LINE_SWEEP_2026-05-30.md). Natural goals = O1.5 in ALL zones
+# (the old escalating O2.5 for low/one_sided was disproven); natural corners =
+# O7.5 strong / O8.5 elsewhere. system_line is the 1-up (advanced Mean config).
 HALF_LINES: dict[str, dict[str, tuple[float, float]]] = {
     "strong":    {"goals": (1.5, 2.5), "corners": (7.5, 8.5)},
-    "standard":  {"goals": (1.5, 2.5), "corners": (7.5, 8.5)},
-    "low":       {"goals": (2.5, 3.5), "corners": (8.5, 9.5)},
-    "one_sided": {"goals": (2.5, 3.5), "corners": (8.5, 9.5)},
+    "standard":  {"goals": (1.5, 2.5), "corners": (8.5, 9.5)},
+    "low":       {"goals": (1.5, 2.5), "corners": (8.5, 9.5)},
+    "one_sided": {"goals": (1.5, 2.5), "corners": (8.5, 9.5)},
 }
 
 ZONES: tuple[str, ...] = ("strong", "standard", "low", "one_sided")

@@ -47,11 +47,11 @@ def _drift_flag(gap_pp: float | None, recent_n: int, min_n: int = DRIFT_MIN_N) -
     return "stable"
 
 
-def _get_live_promoted(conn: sqlite3.Connection) -> dict[tuple[str, str, str], dict[str, Any]]:
-    """Return the V3.2 promoted cell set (stone policy, 3-key).
+def _get_live_promoted(conn: sqlite3.Connection) -> dict[tuple[str, str], dict[str, Any]]:
+    """Return the promoted cell set (ground-zero policy, 2-key).
 
-    Session 23c — Durable Rule 1 overridden. Partition is now
-    ``(zone, df, bts_pocket)`` 3-tuple. Uses PROMOTED_CELLS directly.
+    Re-Foundation — partition is ``(zone, bts_pocket)``. DF is a signal, not a
+    cell axis; drift is computed per (zone, bts). Uses PROMOTED_CELLS directly.
     """
     return dict(PROMOTED_CELLS)
 
@@ -95,12 +95,10 @@ def compute_drift_rows(
     ).fetchall()
 
     now_utc = datetime.now(tz=timezone.utc)
-    # Per-cell -> {window_days: {hits, n}}.
-    per_cell: dict[tuple[str, str, str], dict[int, dict[str, int]]] = {}
+    # Per-cell -> {window_days: {hits, n}}. 2-key (zone, bts) — df is a signal.
+    per_cell: dict[tuple[str, str], dict[int, dict[str, int]]] = {}
     for r in recent_rows:
-        if r["df_level"] is None:
-            continue
-        key = (r["zone"], r["df_level"], r["bts_pocket"])
+        key = (r["zone"], r["bts_pocket"])
         if key not in live_promoted:
             continue
         h = is_hit(settle_pick(r["market"], r["home_score"], r["away_score"],
@@ -122,10 +120,10 @@ def compute_drift_rows(
                 slot["n"] += 1
 
     rows: list[dict[str, Any]] = []
-    for (zone, df, bts), cell in sorted(live_promoted.items()):
+    for (zone, bts), cell in sorted(live_promoted.items()):
         hist_pct = cell["threeway_hit"]
         hist_n = cell.get("n_fixtures", cell.get("n", 0))
-        windows_for_cell = per_cell.get((zone, df, bts), {})
+        windows_for_cell = per_cell.get((zone, bts), {})
         # Smallest window meeting min_sample_n; fall back to base window.
         chosen_window = recent_days
         chosen_data = windows_for_cell.get(recent_days, {"hits": 0, "n": 0})
@@ -147,9 +145,8 @@ def compute_drift_rows(
         flag = _drift_flag(gap_pp, r_n, min_sample_n)
         rows.append({
             "zone":           zone,
-            "df":             df,
             "bts_v2":         bts,
-            "partition_key":  f"{zone}:{df}:{bts}",
+            "partition_key":  f"{zone}:{bts}",
             "historical_n":   hist_n,
             "historical_hit": hist_pct,
             "recent_n":       r_n,
@@ -292,8 +289,11 @@ def similar(
     fixture_id: int | None = Query(None),
     limit: int = Query(50, ge=5, le=200),
 ) -> dict[str, Any]:
-    """Historical settled fixtures in the same (zone, df, bts) cell — V3.2 3-key."""
-    from app.engine.classify import df_of
+    """Historical settled fixtures in the same (zone, bts) cell — 2-key.
+
+    DF is a signal, not part of the cell; ``df`` is accepted but no longer
+    required or filtered on (the similar set is the whole (zone, bts) cell).
+    """
     conn = get_conn(settings.sqlite_path)
     try:
         if fixture_id is not None:
@@ -304,13 +304,11 @@ def similar(
             if fx:
                 zone = zone_of(fx["draw_odd"])
                 bts  = bts_of(fx["btts_yes_odd"], fx["btts_no_odd"])
-                df   = df_of(fx["home_odd"], fx["away_odd"])
 
-        if not zone or not bts or not df:
-            return {"error": "zone, df, and bts required (or a valid fixture_id)", "fixtures": []}
+        if not zone or not bts:
+            return {"error": "zone and bts required (or a valid fixture_id)", "fixtures": []}
 
-        # Similar fixtures: same (zone, bts) at the column level, df re-derived
-        # from each candidate fixture's home/away odds.
+        # Similar fixtures: the whole (zone, bts) cell.
         rows = conn.execute("""
             SELECT f.id, f.date, f.home_team_name, f.away_team_name,
                    f.home_score, f.away_score, f.home_odd, f.away_odd, f.draw_odd,
@@ -325,9 +323,7 @@ def similar(
               AND f.bts_pocket = ?
             ORDER BY f.date DESC
             LIMIT ?
-        """, (zone, bts, limit * 3)).fetchall()
-        # Filter by DF in Python (df_of is not a SQL function).
-        rows = [r for r in rows if df_of(r["home_odd"], r["away_odd"]) == df][:limit]
+        """, (zone, bts, limit)).fetchall()
     finally:
         conn.close()
 
@@ -343,7 +339,7 @@ def similar(
         alpha_home = (h_odd <= a_odd) if (h_odd and a_odd) else True
         alpha_wins = (hs > aws) if alpha_home else (aws > hs)
         draw = (hs == aws)
-        tw_green = (alpha_wins or draw) if zone in ("strong", "standard") else alpha_wins
+        tw_green = alpha_wins or draw   # ground-zero alpha-or-draw, all zones
 
         if fid not in fx_map:
             total += 1
@@ -371,10 +367,9 @@ def similar(
     hit_rate = round(green / total * 100, 1) if total else None
     return {
         "zone":          zone,
-        "df":            df,
         "bts_pocket":    bts,
-        "partition_key": f"{zone}:{df}:{bts}",
-        "threeway_pick": "DNB (Alpha Win or Draw)" if zone in ("strong", "standard", "low") else "Alpha Win",
+        "partition_key": f"{zone}:{bts}",
+        "threeway_pick": "Alpha Win or Draw",
         "sample_n":      total,
         "threeway_hit":  hit_rate,
         "fixtures":      list(fx_map.values()),

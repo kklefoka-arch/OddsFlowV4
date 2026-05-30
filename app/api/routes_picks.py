@@ -25,6 +25,8 @@ from app.settings import settings
 router = APIRouter(tags=["picks"])
 
 DRIFT_MIN_N = 10
+H2H_MIN_MEETINGS = 3      # min prior meetings (with corner data) to call an H2H signal
+H2H_HIGH_CORNERS = 9      # a prior meeting with >= this many corners is a "high" meeting
 
 
 # ---------------------------------------------------------------------------
@@ -103,9 +105,12 @@ def settle_pick(market: str, home_score: int | None, away_score: int | None,
     alpha_home = _alpha_is_home(home_odd, away_odd)
     alpha_wins = (home_score > away_score) if alpha_home else (away_score > home_score)
     draw = (home_score == away_score)
-    if market == "dnb":
+    if market == "threeway":
+        # ground-zero alpha-or-draw: a draw is a WIN (no void)
+        return 1.0 if (alpha_wins or draw) else 0.0
+    if market == "dnb":   # legacy rows
         return 1.0 if alpha_wins else (0.5 if draw else 0.0)
-    if market == "alpha_win":
+    if market == "alpha_win":   # legacy rows
         return 1.0 if alpha_wins else 0.0
     return None
 
@@ -114,12 +119,33 @@ def make_pick_uuid(fixture_id: int, market: str, pick: str) -> str:
     return hashlib.sha256(f"{fixture_id}:{market}:{pick}".encode()).hexdigest()[:36]
 
 
-def _compute_cell_drift(conn: sqlite3.Connection, zone: str, df: str, bts: str,
+def _h2h_corner_signal(conn: sqlite3.Connection, fixture_id: int) -> str:
+    """H2H-corner signal for a fixture (count-based, per Durable Rule 9).
+
+    'over'  = majority of prior meetings (>= H2H_MIN_MEETINGS with corner data)
+              had >= H2H_HIGH_CORNERS corners; 'under' = majority below;
+              'none' = too few meetings to call.
+    """
+    row = conn.execute(
+        """
+        SELECT SUM(CASE WHEN total_corners >= ? THEN 1 ELSE 0 END) AS hi,
+               COUNT(total_corners) AS tot
+        FROM h2h_meetings
+        WHERE anchor_fixture_id = ? AND total_corners IS NOT NULL
+        """,
+        (H2H_HIGH_CORNERS, fixture_id),
+    ).fetchone()
+    if not row or (row["tot"] or 0) < H2H_MIN_MEETINGS:
+        return "none"
+    return "over" if (row["hi"] or 0) * 2 >= row["tot"] else "under"
+
+
+def _compute_cell_drift(conn: sqlite3.Connection, zone: str, bts: str,
                          market: str, historical_pct: float,
                          recent_days: int = 30) -> dict[str, Any]:
     cutoff = (datetime.now(tz=timezone.utc) - timedelta(days=recent_days)).strftime("%Y-%m-%d %H:%M:%S")
-    # 3-key filter (V3.2). em.df_level may be NULL for legacy V3 rows; the
-    # df condition matches the live partition.
+    # 2-key cell filter (Re-Foundation). DF is a signal, not part of the cell —
+    # drift is per (zone, bts, market). df_level still recorded on each row.
     rows = conn.execute(
         """
         SELECT em.market, em.pick,
@@ -128,12 +154,12 @@ def _compute_cell_drift(conn: sqlite3.Connection, zone: str, df: str, bts: str,
         FROM emit_log em
         JOIN fixtures f ON f.id = em.fixture_id
         LEFT JOIN fixture_stats fs ON fs.fixture_id = f.id
-        WHERE em.zone = ? AND em.df_level = ? AND em.bts_pocket = ? AND em.market = ?
+        WHERE em.zone = ? AND em.bts_pocket = ? AND em.market = ?
           AND em.emitted_at >= ?
           AND f.home_score IS NOT NULL AND f.away_score IS NOT NULL
           AND f.home_odd IS NOT NULL AND f.away_odd IS NOT NULL
         """,
-        (zone, df, bts, market, cutoff),
+        (zone, bts, market, cutoff),
     ).fetchall()
 
     # V3 non-loss hit rate (matches static_policy baseline convention — voids
@@ -169,10 +195,10 @@ def _compute_cell_drift(conn: sqlite3.Connection, zone: str, df: str, bts: str,
 def write_emit_log(conn: sqlite3.Connection, emit_rows: list[dict]) -> dict[str, Any]:
     """Write picks to emit_log. INSERT OR IGNORE on pick_uuid (idempotent).
 
-    - Boundary safety (Session 23d Bundle 4): every row's (zone, df, bts) is
-      validated against V3_ACTIVE before INSERT. Anything outside the active
-      partition set is rejected and counted as ``partition_invalid``. Prevents
-      a classify bug or schema mismatch from polluting the DB.
+    - Boundary safety (Bundle 4): every row's (zone, bts) is validated against
+      V3_ACTIVE before INSERT. Anything outside the active partition set is
+      rejected and counted as ``partition_invalid``. Prevents a classify bug or
+      schema mismatch from polluting the DB. (df_level is a recorded signal.)
     - If the row already exists and pick_odd is NULL, backfill pick_odd.
     - If a different pick for the same (fixture_id, market) exists without a
       pick_results row, supersede it: delete the stale row first, then insert.
@@ -184,8 +210,8 @@ def write_emit_log(conn: sqlite3.Connection, emit_rows: list[dict]) -> dict[str,
     updated_count = 0
     invalid_count = 0
     for p in emit_rows:
-        # Boundary check — Bundle 4. (zone, df, bts) must be in V3_ACTIVE.
-        cell_key = (p.get("zone"), p.get("df"), p.get("bts_pocket"))
+        # Boundary check — Bundle 4. (zone, bts) must be in V3_ACTIVE.
+        cell_key = (p.get("zone"), p.get("bts_pocket"))
         if cell_key not in live_keys:
             invalid_count += 1
             continue
@@ -274,6 +300,7 @@ def picks(days: int = Query(3, ge=1, le=14)) -> dict[str, Any]:
                    f.home_odd, f.draw_odd, f.away_odd,
                    f.btts_yes_odd, f.btts_no_odd,
                    f.goals_over_15_odd,
+                   f.corners_over_75_odd,
                    f.corners_over_85_odd,
                    ht.name AS home_team, at2.name AS away_team,
                    lg.name AS league, lg.country, lg.tier AS league_tier
@@ -289,7 +316,8 @@ def picks(days: int = Query(3, ge=1, le=14)) -> dict[str, Any]:
             (today, horizon),
         ).fetchall()
 
-        drift_cache: dict[tuple[str, str, str, str], dict[str, Any]] = {}
+        drift_cache: dict[tuple[str, str, str], dict[str, Any]] = {}
+        h2h_cache: dict[int, str] = {}
         picks_out: list[dict[str, Any]] = []
         emit_rows: list[dict[str, Any]] = []
         # skip_reasons keeps the legacy "unclassifiable" total for back-compat
@@ -326,10 +354,25 @@ def picks(days: int = Query(3, ge=1, le=14)) -> dict[str, Any]:
                     skip_reasons["no_ha_odds"] += 1
                 continue
 
-            cell_markets = V3_ACTIVE.get((zone, df, bts))
-            if cell_markets is None:
+            cell_cfg = V3_ACTIVE.get((zone, bts))
+            if cell_cfg is None:
                 skip_reasons["partition_not_promoted"] += 1
                 continue
+
+            # --- Signal gate 1: DF can suppress the WHOLE cell (confirming verdict).
+            gates = cell_cfg.get("gates", {})
+            if df in gates.get("cell_suppress_df", []):
+                skip_reasons["partition_not_promoted"] += 1
+                continue
+
+            # H2H-corner signal (computed once per fixture, only used by gates/display)
+            if d["id"] not in h2h_cache:
+                try:
+                    h2h_cache[d["id"]] = _h2h_corner_signal(conn, d["id"])
+                except Exception:
+                    h2h_cache[d["id"]] = "none"
+            h2h_sig = h2h_cache[d["id"]]
+            corners_gate = gates.get("corners_suppress_h2h", [])
 
             tier     = d.get("league_tier") or d.get("tier")
             home_odd = d.get("home_odd")
@@ -339,12 +382,18 @@ def picks(days: int = Query(3, ge=1, le=14)) -> dict[str, Any]:
             alpha_team = (d.get("home_team") or "") if alpha_home else (d.get("away_team") or "")
             emitted_any = False
 
-            for market, mkt_cfg in cell_markets.items():
-                drift_key = (zone, df, bts, market)
+            for market, mkt_cfg in cell_cfg.items():
+                if market in ("gates", "signals") or not isinstance(mkt_cfg, dict):
+                    continue
+                # --- Signal gate 2: H2H can suppress corners_nl (confirming verdict).
+                if market == "corners_nl" and h2h_sig in corners_gate:
+                    continue
+
+                drift_key = (zone, bts, market)
                 if drift_key not in drift_cache:
                     try:
                         drift_cache[drift_key] = _compute_cell_drift(
-                            conn, zone, df, bts, market, mkt_cfg["hit"]
+                            conn, zone, bts, market, mkt_cfg["hit"]
                         )
                     except Exception:
                         drift_cache[drift_key] = {
@@ -368,14 +417,10 @@ def picks(days: int = Query(3, ge=1, le=14)) -> dict[str, Any]:
                     pick_odd   = d.get(odd_col) if odd_col else None
                     derived    = False
 
-                elif market == "dnb":
-                    pick_label = alpha_team
+                elif market == "threeway":
+                    # ground-zero alpha-or-draw (a draw is a WIN). Priced as DNB.
+                    pick_label = f"{alpha_team} or Draw" if alpha_team else "Alpha or Draw"
                     pick_odd, derived = _derive_dnb_odd(home_odd, draw_odd, away_odd)
-
-                elif market == "alpha_win":
-                    pick_label = alpha_team
-                    pick_odd   = round(min(home_odd, away_odd), 3) if (home_odd and away_odd) else None
-                    derived    = False
 
                 else:
                     continue
@@ -395,9 +440,10 @@ def picks(days: int = Query(3, ge=1, le=14)) -> dict[str, Any]:
                     "pick_odd":                 pick_odd,
                     "pick_odd_derived":         derived,
                     "pick_class":               "promote",
-                    "partition_key":            f"{zone}:{df}:{bts}",
+                    "partition_key":            f"{zone}:{bts}",
                     "draw_zone":                zone,
-                    "df":                       df,
+                    "df":                       df,          # signal (confidence chip), not part of the cell key
+                    "h2h_corner":               h2h_sig,     # signal
                     "bts_pocket":               bts,
                     "cell_drift_flag":          drift["flag"],
                     "cell_drift_gap_pp":        drift["gap_pp"],

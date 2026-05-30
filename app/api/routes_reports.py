@@ -411,47 +411,43 @@ def emit_market_breakdown(
             [*tier_params],
         ).fetchall()
         from app.engine.static_policy import V3_ACTIVE, V3_MARKETS
-        from app.engine.classify import df_of
-        live_promoted_keys: set[tuple[str, str, str]] = set(V3_ACTIVE.keys())
+        live_promoted_keys: set[tuple[str, str]] = set(V3_ACTIVE.keys())
     finally:
         conn.close()
 
-    # Bucket settled outcomes by (zone, df, bts, market) — V3.2 3-key cells,
-    # aggregated across picks.
-    buckets: dict[tuple[str, str, str, str], list[float]] = {}
+    # Bucket settled outcomes by (zone, bts, market) — 2-key cells, aggregated
+    # across picks. DF is a signal (surfaced separately), not a cell axis.
+    buckets: dict[tuple[str, str, str], list[float]] = {}
     for r in rows:
         zone = zone_of(r["draw_odd"])
         bts = bts_of(r["btts_yes_odd"], r["btts_no_odd"])
-        df = df_of(r["home_odd"], r["away_odd"])
-        if zone is None or bts is None or df is None:
+        if zone is None or bts is None:
             continue
         outcome = settle_pick(r["market"], r["home_score"], r["away_score"],
                                r["home_odd"], r["away_odd"], r["pick"],
                                total_corners=r["total_corners"])
         if outcome is None:
             continue
-        key = (zone, df, bts, r["market"])
+        key = (zone, bts, r["market"])
         buckets.setdefault(key, []).append(outcome)
 
-    cells: dict[tuple[str, str, str], dict[str, Any]] = {}
+    cells: dict[tuple[str, str], dict[str, Any]] = {}
     markets_summary: dict[str, dict[str, int]] = {}
-    # zone_market_summary now keyed on (zone, df, market) so the per-DF signal
-    # surfaces in the Reports tab — matches the V3.2 partition.
-    zone_market_summary: dict[tuple[str, str, str], dict[str, int]] = {}
-    for (zone, df, bts, market), outs in sorted(buckets.items()):
+    # zone_market_summary keyed on (zone, market).
+    zone_market_summary: dict[tuple[str, str], dict[str, int]] = {}
+    for (zone, bts, market), outs in sorted(buckets.items()):
         wins = sum(1 for o in outs if o == 1.0)
         voids = sum(1 for o in outs if o == 0.5)
         n = len(outs)
         losses = n - wins - voids
-        # V3 non-loss hit rate — voids count as wins (matches static_policy).
+        # V3 non-loss hit rate — voids count as wins (legacy DNB rows only).
         non_loss = (wins + voids) / n if n > 0 else None
         win_only = wins / n if n > 0 else None
-        cell = cells.setdefault((zone, df, bts), {
+        cell = cells.setdefault((zone, bts), {
             "zone": zone,
-            "df": df,
             "bts_v2": bts,
-            "partition_key": f"{zone}:{df}:{bts}",
-            "is_promoted": (zone, df, bts) in live_promoted_keys,
+            "partition_key": f"{zone}:{bts}",
+            "is_promoted": (zone, bts) in live_promoted_keys,
             "markets": [],
         })
         cell["markets"].append({
@@ -465,7 +461,7 @@ def emit_market_breakdown(
         })
         ms = markets_summary.setdefault(market, {"n": 0, "wins": 0, "voids": 0, "losses": 0})
         ms["n"] += n; ms["wins"] += wins; ms["voids"] += voids; ms["losses"] += losses
-        zk = (zone, df, market)
+        zk = (zone, market)
         zm = zone_market_summary.setdefault(zk, {"n": 0, "wins": 0, "voids": 0, "losses": 0})
         zm["n"] += n; zm["wins"] += wins; zm["voids"] += voids; zm["losses"] += losses
 
@@ -475,7 +471,8 @@ def emit_market_breakdown(
     market_baselines: dict[str, list[float]] = {}
     for cell_cfg in V3_MARKETS.values():
         for m, mcfg in cell_cfg.items():
-            market_baselines.setdefault(m, []).append(mcfg["hit"])
+            if isinstance(mcfg, dict) and "hit" in mcfg:   # skip gates/signals/provisional
+                market_baselines.setdefault(m, []).append(mcfg["hit"])
     markets_summary_out = []
     for m, agg in sorted(markets_summary.items()):
         n = agg["n"]
@@ -496,24 +493,23 @@ def emit_market_breakdown(
             "vs_baseline_pp":   delta_pp,
         })
 
-    # zone_market_summary[] — per (zone, df, market) roll-up. V3.2 surfaces DF.
+    # zone_market_summary[] — per (zone, market) roll-up.
     zone_market_out = []
-    for (zone, df, market), agg in sorted(zone_market_summary.items()):
+    for (zone, market), agg in sorted(zone_market_summary.items()):
         n = agg["n"]
         non_loss = round(100 * (agg["wins"] + agg["voids"]) / n, 1) if n else None
-        # baseline = mean of V3_MARKETS[market] across cells in this (zone, df).
+        # baseline = mean of V3_MARKETS[market] across cells in this zone.
         cell_baselines = [
             mcfg["hit"]
-            for (z, d, b), cell_cfg in V3_MARKETS.items()
-            if z == zone and d == df
+            for (z, b), cell_cfg in V3_MARKETS.items()
+            if z == zone
             for m, mcfg in cell_cfg.items()
-            if m == market
+            if m == market and isinstance(mcfg, dict) and "hit" in mcfg
         ]
         baseline = round(sum(cell_baselines) / len(cell_baselines), 1) if cell_baselines else None
         delta_pp = round(non_loss - baseline, 1) if (non_loss is not None and baseline is not None) else None
         zone_market_out.append({
             "zone":             zone,
-            "df":               df,
             "market":           market,
             "n":                n,
             "wins":             agg["wins"],

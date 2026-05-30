@@ -14,9 +14,12 @@ DB     = r"C:\OddsFlowV4\data\oddsflow_v4.db"
 TODAY     = datetime.now(timezone.utc).strftime("%Y-%m-%d")
 END_DATE  = "2026-12-31"
 
-# All 30 subscribed leagues — sportmonks_id: tier
+# All 29 subscribed leagues — sportmonks_id: tier.
+# Re-Foundation (2026-05-30) — country-context tiers: T1 = top flight of its
+# country (regardless of Sportmonks' own numbering), T2 = the division directly
+# below, T3 = the rest + cups. Tier split for analysis is T1+T2 vs T3.
 ACTIVE_LEAGUES = {
-    # T1
+    # T1 — top flight of its country
     573:  1,   # Sweden — Allsvenskan
     444:  1,   # Norway — Eliteserien
     345:  1,   # Iceland — Besta deild
@@ -26,30 +29,30 @@ ACTIVE_LEAGUES = {
     648:  1,   # Brazil — Serie A
     3537: 1,   # Japan — J1 100 Year Vision League
     1034: 1,   # South Korea — K League 1
-    # T2
-    393:  2,   # Kazakhstan — Premier League
-    405:  2,   # Lithuania — A Lyga
+    989:  1,   # China — Super League        (was T2; top flight of China)
+    1098: 1,   # Bolivia — Liga De Futbol Prof (was T3; top flight of Bolivia)
+    696:  1,   # Ecuador — Liga Pro          (was T2; top flight of Ecuador)
+    1689: 1,   # Canada — Premier League     (was T2; top flight of Canada)
+    286:  1,   # Estonia — Meistriliiga      (was T2; top flight of Estonia)
+    393:  1,   # Kazakhstan — Premier League (was T2; top flight of Kazakhstan)
+    405:  1,   # Lithuania — A Lyga          (was T2; top flight of Lithuania)
+    # T2 — division directly below the top flight
     579:  2,   # Sweden — Superettan
-    585:  2,   # Sweden — Ettan: North
-    588:  2,   # Sweden — Ettan: South
-    681:  2,   # Colombia — Copa Colombia
     678:  2,   # Colombia — Primera B
-    696:  2,   # Ecuador — Liga Pro
-    1689: 2,   # Canada — Premier League
     295:  2,   # Finland — Ykköseliga
-    286:  2,   # Estonia — Meistriliiga
     289:  2,   # Estonia — Esiliiga A
     791:  2,   # United States — USL Championship
     3550: 2,   # Japan — J2/J3 100 Year Vision League
-    989:  2,   # China — Super League
-    # T3
+    # T3 — lower tiers + cups
     1642: 3,   # Argentina — Reserve League
     351:  3,   # Iceland — 2. Deild
-    # 797 (USA — USL League Two) removed 2026-05-29 — operator dropped from
-    # Sportmonks subscription. 2,656 historical fixtures stay in DB.
     1607: 3,   # United States — USL League One
     2545: 3,   # United States — MLS Next Pro
-    1098: 3,   # Bolivia — Liga De Futbol Prof
+    585:  3,   # Sweden — Ettan: North       (was T2; 3rd tier)
+    588:  3,   # Sweden — Ettan: South       (was T2; 3rd tier)
+    681:  3,   # Colombia — Copa Colombia     (was T2; cup competition)
+    # 797 (USA — USL League Two) removed 2026-05-29 — operator dropped from
+    # Sportmonks subscription. Historical fixtures stay in DB.
 }
 
 BASE = "https://api.sportmonks.com/v3/football"
